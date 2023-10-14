@@ -1,8 +1,8 @@
 /*
 TODO:
-- Animate character
 
 DONE:
+- Animate character
 - Show grid cursor
 - Make grid
 - Let camera follow the player
@@ -13,6 +13,9 @@ use rand::Rng;
 
 use bevy::{prelude::*, window::PrimaryWindow};
 use bevy_rapier2d::prelude::*;
+
+mod player;
+use player::Player;
 
 #[derive(Component)]
 struct Grid {
@@ -56,15 +59,12 @@ impl Grid {
         Vec2::new(a, b)
     }
 
-    fn cursor_to_world(&self, pos: Vec2) -> Vec2{
+    fn cursor_to_world(&self, pos: Vec2) -> Vec2 {
         let a = (pos.x / self.tile_size).floor() * self.tile_size + (self.tile_size / 2.0);
         let b = (pos.y / self.tile_size).floor() * self.tile_size + (self.tile_size / 2.0);
         Vec2::new(a, b)
     }
 }
-
-#[derive(Component)]
-pub struct Player;
 
 #[derive(Component)]
 struct MainCamera;
@@ -90,32 +90,16 @@ fn main() {
                 .build(),
             RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0),
             RapierDebugRenderPlugin::default(),
+            player::PlayerPlugin
         ))
         .add_systems(Startup, setup)
         .add_systems(PostStartup, (spawn_trees, spawn_rocks))
-        .add_systems(Update, (character_movement, move_camera, move_cursor))
+        .add_systems(Update, (move_camera, move_cursor))
         .run();
 }
 
-fn setup(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>
-) {
+fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default()).insert(MainCamera);
-
-    let texture = asset_server.load("punk.png");
-
-    commands
-        .spawn((
-            SpriteBundle {
-                texture,
-                ..default()
-            },
-            Player,
-        ))
-        .insert(KinematicCharacterController::default())
-        .insert(RigidBody::KinematicVelocityBased)
-        .insert(Collider::capsule_y(25.0, 25.0));
 
     commands.spawn(Grid::new(50.0));
 
@@ -143,7 +127,7 @@ fn move_cursor(
     primary_query: Query<&Window, With<PrimaryWindow>>,
     q_camera: Query<(&Camera, &GlobalTransform), (With<MainCamera>, Without<Player>)>,
     mut cursor_transform: Query<&mut Transform, With<Cursor>>,
-    grid_query: Query<& Grid>,
+    grid_query: Query<&Grid>,
 ) {
     let (camera, camera_transform) = q_camera.single();
     let Ok(primary) = primary_query.get_single() else {
@@ -156,7 +140,7 @@ fn move_cursor(
                 ray.intersect_plane(Vec3::ZERO, Vec3::Z)
                     .map(|distance| ray.get_point(distance))
             });
-        
+
         let grid = grid_query.single();
         let pos2 = grid.cursor_to_world(pos.unwrap().truncate());
         cursor_transform.single_mut().translation = Vec3::new(pos2.x, pos2.y, 0.);
@@ -177,26 +161,6 @@ fn move_camera(
         .lerp(new_camera_pos, 0.2);
 }
 
-fn character_movement(
-    mut controller_query: Query<&mut KinematicCharacterController, With<Player>>,
-    input: Res<Input<KeyCode>>,
-    time: Res<Time>,
-) {
-    let SPEED = 150.0;
-    let mut controller = controller_query.single_mut();
-    if input.pressed(KeyCode::W) {
-        controller.translation = Some(Vec2::new(0.0, SPEED * time.delta_seconds()));
-    }
-    if input.pressed(KeyCode::S) {
-        controller.translation = Some(Vec2::new(0.0, -SPEED * time.delta_seconds()));
-    }
-    if input.pressed(KeyCode::D) {
-        controller.translation = Some(Vec2::new(SPEED * time.delta_seconds(), 0.0));
-    }
-    if input.pressed(KeyCode::A) {
-        controller.translation = Some(Vec2::new(-SPEED * time.delta_seconds(), 0.0));
-    }
-}
 
 fn spawn_trees(
     mut commands: Commands,
