@@ -45,9 +45,6 @@ fn character_movement(
         With<Player>,
     >,
 ) {
-    const SPEED: f32 = 150.0;
-    let mut controller = controller_query.single_mut();
-    let (mut anim_indices, mut sprite, mut movement) = anim_query.single_mut();
     let mut x = 0.0;
     let mut y = 0.0;
     if input.pressed(KeyCode::W) {
@@ -62,6 +59,8 @@ fn character_movement(
         x = -1.0;
     }
 
+    let mut controller = controller_query.single_mut();
+    let (mut anim_indices, mut sprite, mut movement) = anim_query.single_mut();
     if x == 1.0 && y == 0.0 {
         if *movement != Movement::Right {
             anim_indices.first = 8;
@@ -156,6 +155,7 @@ fn character_movement(
             }
         }
     } else {
+        const SPEED: f32 = 150.0;
         let v2_norm = Vec2::new(x, y).normalize();
         controller.translation = Some(Vec2::new(v2_norm.x * SPEED * time.delta_seconds(), v2_norm.y * SPEED * time.delta_seconds()))
     }

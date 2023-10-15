@@ -1,5 +1,7 @@
 /*
 TODO:
+- Break down rocks
+- Chop down trees
 
 DONE:
 - Animate character
@@ -72,6 +74,14 @@ struct MainCamera;
 #[derive(Component)]
 struct Cursor;
 
+#[derive(Component)]
+struct Tree;
+
+#[derive(Component)]
+struct Damage {
+    value: i32,
+}
+
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.0, 0.5, 0.0)))
@@ -90,11 +100,11 @@ fn main() {
                 .build(),
             RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0),
             RapierDebugRenderPlugin::default(),
-            player::PlayerPlugin
+            player::PlayerPlugin,
         ))
         .add_systems(Startup, setup)
         .add_systems(PostStartup, (spawn_trees, spawn_rocks))
-        .add_systems(Update, (move_camera, move_cursor))
+        .add_systems(Update, (move_camera, move_cursor, chop_tree))
         .run();
 }
 
@@ -161,6 +171,50 @@ fn move_camera(
         .lerp(new_camera_pos, 0.2);
 }
 
+fn chop_tree(
+    player_query: Query<&Transform, With<Player>>,
+    mut tree_query: Query<(Entity, &Transform, &mut Damage), With<Tree>>,
+    input: Res<Input<KeyCode>>,
+    mut commands: Commands,
+) {
+    if input.just_pressed(KeyCode::Space) {
+        let player = player_query.single();
+
+        // Find nearest tree
+        let mut nearest_entity: Option<(Entity, f32)> = None;
+        for (entity, transform, _) in tree_query.iter() {
+            match nearest_entity {
+                None => {
+                    let distance = transform.translation.distance(player.translation);
+                    nearest_entity = Some((entity, distance));
+                },
+                Some((_, distance2)) => {
+                    let distance = transform.translation.distance(player.translation);
+                    if distance < distance2 {
+                        nearest_entity = Some((entity, distance));
+                    }
+                }
+            }
+        }
+
+        // Chop down nearest tree
+        for (entity, _, mut damage) in tree_query.iter_mut() {
+            match nearest_entity {
+                Some((entity2, distance2)) => {
+                    if entity == entity2 {
+                        if distance2 < 80.0 {
+                            damage.value -= 1;
+                        }
+                        if damage.value == 0 {
+                            commands.entity(entity).despawn_recursive();
+                        }
+                    }
+                },
+                None => {}
+            }
+        }
+    }
+}
 
 fn spawn_trees(
     mut commands: Commands,
@@ -170,9 +224,6 @@ fn spawn_trees(
     let mut rng = rand::thread_rng();
     let mut trees_num = 0;
     loop {
-        if trees_num == 10 {
-            break;
-        }
         let x = rng.gen_range(-7..=7);
         let y = rng.gen_range(-7..=7);
         let mut grid = grid_query.single_mut();
@@ -180,16 +231,22 @@ fn spawn_trees(
             grid.place_object("tree".to_string(), (x, y));
             let v = grid.grid_to_world((x, y));
             let texture = asset_server.load("tree.png");
-            commands
-                .spawn(SpriteBundle {
+            commands.spawn((
+                SpriteBundle {
                     texture,
                     transform: Transform::from_xyz(v.x, v.y, 0.0),
                     ..default()
-                })
-                .insert(Collider::capsule_y(25.0, 25.0));
+                },
+                Collider::ball(25.0),
+                Tree,
+                Damage { value: 3 },
+            ));
             trees_num += 1
         } else {
             continue;
+        }
+        if trees_num == 10 {
+            break;
         }
     }
 }
@@ -202,9 +259,6 @@ fn spawn_rocks(
     let mut rng = rand::thread_rng();
     let mut rocks_num = 0;
     loop {
-        if rocks_num == 10 {
-            break;
-        }
         let x = rng.gen_range(-7..=7);
         let y = rng.gen_range(-7..=7);
         let mut grid = grid_query.single_mut();
@@ -212,16 +266,20 @@ fn spawn_rocks(
             grid.place_object("rock".to_string(), (x, y));
             let v = grid.grid_to_world((x, y));
             let texture = asset_server.load("rock.png");
-            commands
-                .spawn(SpriteBundle {
+            commands.spawn((
+                SpriteBundle {
                     texture,
                     transform: Transform::from_xyz(v.x, v.y, 0.0),
                     ..default()
-                })
-                .insert(Collider::ball(25.0));
+                },
+                Collider::ball(25.0),
+            ));
             rocks_num += 1
         } else {
             continue;
+        }
+        if rocks_num == 10 {
+            break;
         }
     }
 }
