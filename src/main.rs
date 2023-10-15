@@ -78,6 +78,9 @@ struct Cursor;
 struct Tree;
 
 #[derive(Component)]
+struct Rock;
+
+#[derive(Component)]
 struct Damage {
     value: i32,
 }
@@ -104,7 +107,7 @@ fn main() {
         ))
         .add_systems(Startup, setup)
         .add_systems(PostStartup, (spawn_trees, spawn_rocks))
-        .add_systems(Update, (move_camera, move_cursor, chop_tree))
+        .add_systems(Update, (move_camera, move_cursor, chop_tree, break_rock))
         .run();
 }
 
@@ -251,6 +254,51 @@ fn spawn_trees(
     }
 }
 
+fn break_rock(
+    player_query: Query<&Transform, With<Player>>,
+    mut tree_query: Query<(Entity, &Transform, &mut Damage), With<Rock>>,
+    input: Res<Input<KeyCode>>,
+    mut commands: Commands,
+) {
+    if input.just_pressed(KeyCode::Space) {
+        let player = player_query.single();
+
+        // Find nearest rock
+        let mut nearest_entity: Option<(Entity, f32)> = None;
+        for (entity, transform, _) in tree_query.iter() {
+            match nearest_entity {
+                None => {
+                    let distance = transform.translation.distance(player.translation);
+                    nearest_entity = Some((entity, distance));
+                },
+                Some((_, distance2)) => {
+                    let distance = transform.translation.distance(player.translation);
+                    if distance < distance2 {
+                        nearest_entity = Some((entity, distance));
+                    }
+                }
+            }
+        }
+
+        // Break down nearest rock
+        for (entity, _, mut damage) in tree_query.iter_mut() {
+            match nearest_entity {
+                Some((entity2, distance2)) => {
+                    if entity == entity2 {
+                        if distance2 < 80.0 {
+                            damage.value -= 1;
+                        }
+                        if damage.value == 0 {
+                            commands.entity(entity).despawn_recursive();
+                        }
+                    }
+                },
+                None => {}
+            }
+        }
+    }
+}
+
 fn spawn_rocks(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -273,6 +321,8 @@ fn spawn_rocks(
                     ..default()
                 },
                 Collider::ball(25.0),
+                Rock,
+                Damage { value: 3 },
             ));
             rocks_num += 1
         } else {
