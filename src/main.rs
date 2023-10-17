@@ -1,5 +1,8 @@
 /*
 TODO:
+- Make store
+- Build houses wall by wall and walkable
+- Grow plants
 
 DONE:
 - Add buildable cottage
@@ -14,14 +17,13 @@ DONE:
 */
 use std::collections::HashMap;
 
-use rand::Rng;
-
 use bevy::{prelude::*, window::PrimaryWindow};
 use bevy_rapier2d::prelude::*;
 
 mod player;
 mod ui;
 use player::{AnimationIndices, Movement, Player};
+use ui::HouseButton;
 
 #[derive(Component)]
 struct Grid {
@@ -37,8 +39,8 @@ impl Grid {
         }
     }
 
-    fn place_object(&mut self, name: String, pos: (i32, i32)) {
-        self.placements.push((name, pos));
+    fn place_object(&mut self, name: String, pos: Vec2) {
+        self.placements.push((name, self.world_to_grid(pos)));
     }
 
     fn is_free(&self, pos: (i32, i32)) -> bool {
@@ -122,7 +124,7 @@ fn main() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Anarchy".into(),
-                        resolution: (640.0, 480.0).into(),
+                        resolution: (1280.0, 720.0).into(),
                         resizable: false,
                         ..default()
                     }),
@@ -130,11 +132,11 @@ fn main() {
                 })
                 .build(),
             RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0),
-            RapierDebugRenderPlugin::default(),
+            // RapierDebugRenderPlugin::default(),
             player::PlayerPlugin,
             ui::UiPlugin,
         ))
-        .add_systems(Startup, (setup))
+        .add_systems(Startup, setup)
         .add_systems(PostStartup, (spawn_trees, spawn_rocks))
         .add_systems(
             Update,
@@ -224,6 +226,8 @@ fn drop_house(
     mouse: Res<Input<MouseButton>>,
     query: Query<&Sprite>,
     asset_server: Res<AssetServer>,
+    mut inv_query: Query<&mut Inventory>,
+    text_query: Query<Entity, With<HouseButton>>,
 ) {
     if query.contains(cursor.single().0) {
         if mouse.just_pressed(MouseButton::Left) {
@@ -238,6 +242,20 @@ fn drop_house(
                 },
                 Collider::cuboid(95.0, 95.0),
             ));
+
+            inv_query
+                .single_mut()
+                .items
+                .entry(PickableObject::Rocks)
+                .and_modify(|count| *count -= 5);
+
+            inv_query
+                .single_mut()
+                .items
+                .entry(PickableObject::Wood)
+                .and_modify(|count| *count -= 5);
+
+            commands.entity(text_query.single()).despawn_descendants();
         }
     }
 }
@@ -423,33 +441,32 @@ fn spawn_trees(
     asset_server: Res<AssetServer>,
     mut grid_query: Query<&mut Grid>,
 ) {
-    let mut rng = rand::thread_rng();
-    let mut trees_num = 0;
-    loop {
-        let x = rng.gen_range(-7..=7);
-        let y = rng.gen_range(-7..=7);
+    let positions = [
+        [200.0, 150.0],
+        [350.0, 0.0],
+        [350.0, 200.0],
+        [-250.0, 100.0],
+        [-150.0, 150.0],
+        [300.0, -250.0],
+        [400.0, -150.0],
+        [-200.0, -100.0],
+        [-400.0, -250.0],
+        [-100.0, -300.0],
+    ];
+    for pos in positions {
         let mut grid = grid_query.single_mut();
-        if grid.is_free((x, y)) {
-            grid.place_object("tree".to_string(), (x, y));
-            let v = grid.grid_to_world((x, y));
-            let texture = asset_server.load("tree.png");
-            commands.spawn((
-                SpriteBundle {
-                    texture,
-                    transform: Transform::from_xyz(v.x, v.y, 0.0),
-                    ..default()
-                },
-                Collider::ball(25.0),
-                WorldObject::Tree,
-                Damage { value: 3 },
-            ));
-            trees_num += 1
-        } else {
-            continue;
-        }
-        if trees_num == 10 {
-            break;
-        }
+        grid.place_object("tree".to_string(), Vec2::new(pos[0], pos[1]));
+        let texture = asset_server.load("tree.png");
+        commands.spawn((
+            SpriteBundle {
+                texture,
+                transform: Transform::from_xyz(pos[0], pos[1], 0.0),
+                ..default()
+            },
+            Collider::ball(25.0),
+            WorldObject::Tree,
+            Damage { value: 3 },
+        ));
     }
 }
 
@@ -458,32 +475,31 @@ fn spawn_rocks(
     asset_server: Res<AssetServer>,
     mut grid_query: Query<&mut Grid>,
 ) {
-    let mut rng = rand::thread_rng();
-    let mut rocks_num = 0;
-    loop {
-        let x = rng.gen_range(-7..=7);
-        let y = rng.gen_range(-7..=7);
+    let positions = [
+        [50.0, 50.0],
+        [300.0, 350.0],
+        [200.0, 250.0],
+        [-150.0, 300.0],
+        [-400.0, 100.0],
+        [250.0, -150.0],
+        [50.0, -250.0],
+        [-300.0, -150.0],
+        [-250.0, -400.0],
+        [-450.0, -50.0],
+    ];
+    for pos in positions {
         let mut grid = grid_query.single_mut();
-        if grid.is_free((x, y)) {
-            grid.place_object("rock".to_string(), (x, y));
-            let v = grid.grid_to_world((x, y));
-            let texture = asset_server.load("rock.png");
-            commands.spawn((
-                SpriteBundle {
-                    texture,
-                    transform: Transform::from_xyz(v.x, v.y, 0.0),
-                    ..default()
-                },
-                Collider::ball(25.0),
-                WorldObject::Rock,
-                Damage { value: 2 },
-            ));
-            rocks_num += 1
-        } else {
-            continue;
-        }
-        if rocks_num == 10 {
-            break;
-        }
+        grid.place_object("rock".to_string(), Vec2::new(pos[0], pos[1]));
+        let texture = asset_server.load("rock.png");
+        commands.spawn((
+            SpriteBundle {
+                texture,
+                transform: Transform::from_xyz(pos[0], pos[1], 0.0),
+                ..default()
+            },
+            Collider::ball(25.0),
+            WorldObject::Rock,
+            Damage { value: 2 },
+        ));
     }
 }

@@ -40,8 +40,7 @@ fn setup_player(
     mut grid_query: Query<&mut Grid>,
 ) {
     let mut grid = grid_query.single_mut();
-    let pos = grid.grid_to_world((0, 0));
-    grid.place_object("player".to_string(), (0, 0));
+    grid.place_object("player".to_string(), Vec2::new(0.0, 0.0));
 
     let texture_handle = asset_server.load("spritesheet.png");
     let texture_atlas =
@@ -54,7 +53,6 @@ fn setup_player(
         SpriteSheetBundle {
             texture_atlas: texture_atlas_handle,
             sprite: TextureAtlasSprite::new(animation_indices.first),
-            transform: Transform::from_xyz(pos.x, pos.y, 0.0),
             ..default()
         },
         animation_indices,
