@@ -7,20 +7,21 @@ use crate::Grid;
 pub struct Player;
 
 #[derive(Component)]
-struct AnimationIndices {
-    first: usize,
-    last: usize,
+pub struct AnimationIndices {
+    pub first: usize,
+    pub last: usize,
 }
 
 #[derive(Component, Deref, DerefMut)]
 struct AnimationTimer(Timer);
 
 #[derive(Component, PartialEq)]
-enum Movement {
+pub enum Movement {
     Up,
     Down,
     Left,
     Right,
+    Working,
     None,
 }
 
@@ -30,6 +31,39 @@ impl Plugin for PlayerPlugin {
         app.add_systems(PostStartup, setup_player)
             .add_systems(Update, (character_movement, animate_sprite));
     }
+}
+
+fn setup_player(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    mut grid_query: Query<&mut Grid>,
+) {
+    let mut grid = grid_query.single_mut();
+    let pos = grid.grid_to_world((0, 0));
+    grid.place_object("player".to_string(), (0, 0));
+
+    let texture_handle = asset_server.load("spritesheet.png");
+    let texture_atlas =
+        TextureAtlas::from_grid(texture_handle, Vec2::new(100.0, 100.0), 4, 6, None, None);
+    let texture_atlas_handle = texture_atlases.add(texture_atlas);
+    // Use only the subset of sprites in the sheet that make up the run animation
+    let animation_indices = AnimationIndices { first: 2, last: 2 };
+    commands.spawn((
+        Player,
+        SpriteSheetBundle {
+            texture_atlas: texture_atlas_handle,
+            sprite: TextureAtlasSprite::new(animation_indices.first),
+            transform: Transform::from_xyz(pos.x, pos.y, 0.0),
+            ..default()
+        },
+        animation_indices,
+        AnimationTimer(Timer::from_seconds(0.3, TimerMode::Repeating)),
+        KinematicCharacterController::default(),
+        RigidBody::KinematicVelocityBased,
+        Collider::capsule_y(25.0, 25.0),
+        Movement::None,
+    ));
 }
 
 fn character_movement(
@@ -148,6 +182,7 @@ fn character_movement(
                 anim_indices.last = 9;
                 *sprite = TextureAtlasSprite::new(9)
             }
+            Movement::Working => { }
             Movement::None => {
                 anim_indices.first = 2;
                 anim_indices.last = 2;
@@ -179,37 +214,4 @@ fn animate_sprite(
             };
         }
     }
-}
-
-fn setup_player(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
-    mut grid_query: Query<&mut Grid>,
-) {
-    let mut grid = grid_query.single_mut();
-    let pos = grid.grid_to_world((0, 0));
-    grid.place_object("player".to_string(), (0, 0));
-
-    let texture_handle = asset_server.load("spritesheet.png");
-    let texture_atlas =
-        TextureAtlas::from_grid(texture_handle, Vec2::new(100.0, 100.0), 4, 4, None, None);
-    let texture_atlas_handle = texture_atlases.add(texture_atlas);
-    // Use only the subset of sprites in the sheet that make up the run animation
-    let animation_indices = AnimationIndices { first: 2, last: 2 };
-    commands.spawn((
-        Player,
-        SpriteSheetBundle {
-            texture_atlas: texture_atlas_handle,
-            sprite: TextureAtlasSprite::new(animation_indices.first),
-            transform: Transform::from_xyz(pos.x, pos.y, 0.0),
-            ..default()
-        },
-        animation_indices,
-        AnimationTimer(Timer::from_seconds(0.3, TimerMode::Repeating)),
-        KinematicCharacterController::default(),
-        RigidBody::KinematicVelocityBased,
-        Collider::capsule_y(25.0, 25.0),
-        Movement::None,
-    ));
 }

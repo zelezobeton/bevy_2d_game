@@ -1,15 +1,18 @@
 /*
 TODO:
-- Break down rocks
-- Chop down trees
 
 DONE:
+- Add buildable cottage
+- Make UI
+- Break down rocks
+- Chop down trees
 - Animate character
 - Show grid cursor
 - Make grid
 - Let camera follow the player
 - Add colisions
 */
+use std::collections::HashMap;
 
 use rand::Rng;
 
@@ -17,7 +20,8 @@ use bevy::{prelude::*, window::PrimaryWindow};
 use bevy_rapier2d::prelude::*;
 
 mod player;
-use player::Player;
+mod ui;
+use player::{AnimationIndices, Movement, Player};
 
 #[derive(Component)]
 struct Grid {
@@ -72,17 +76,41 @@ impl Grid {
 struct MainCamera;
 
 #[derive(Component)]
-struct Cursor;
+pub struct Cursor;
 
-#[derive(Component)]
-struct Tree;
+#[derive(Component, PartialEq)]
+enum WorldObject {
+    Tree,
+    Rock,
+}
 
-#[derive(Component)]
-struct Rock;
+#[derive(Component, PartialEq, Eq, Hash, Debug, Clone, Copy)]
+enum PickableObject {
+    Wood,
+    Rocks,
+}
+
+#[derive(Component, PartialEq, Eq, Hash, Debug, Clone, Copy)]
+enum Tool {
+    Axe,
+    Pickaxe,
+}
+
+#[derive(Component, PartialEq, Eq, Hash, Debug, Clone, Copy)]
+enum Recipe {
+    House,
+}
 
 #[derive(Component)]
 struct Damage {
     value: i32,
+}
+
+#[derive(Component)]
+pub struct Inventory {
+    items: HashMap<PickableObject, i32>,
+    tools: HashMap<Tool, bool>,
+    recipes: HashMap<Recipe, bool>,
 }
 
 fn main() {
@@ -104,10 +132,20 @@ fn main() {
             RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0),
             RapierDebugRenderPlugin::default(),
             player::PlayerPlugin,
+            ui::UiPlugin,
         ))
-        .add_systems(Startup, setup)
+        .add_systems(Startup, (setup))
         .add_systems(PostStartup, (spawn_trees, spawn_rocks))
-        .add_systems(Update, (move_camera, move_cursor, chop_tree, break_rock))
+        .add_systems(
+            Update,
+            (
+                move_camera,
+                break_object,
+                pickup_object,
+                move_cursor,
+                drop_house,
+            ),
+        )
         .run();
 }
 
@@ -115,6 +153,12 @@ fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default()).insert(MainCamera);
 
     commands.spawn(Grid::new(50.0));
+
+    commands.spawn(Inventory {
+        items: HashMap::from([(PickableObject::Wood, 0), (PickableObject::Rocks, 0)]),
+        tools: HashMap::from([(Tool::Axe, false), (Tool::Pickaxe, false)]),
+        recipes: HashMap::from([(Recipe::House, false)]),
+    });
 
     // Setup cursor
     commands
@@ -125,14 +169,14 @@ fn setup(mut commands: Commands) {
             },
             ..default()
         })
-        .insert(SpriteBundle {
-            sprite: Sprite {
-                color: Color::rgb(0., 0.25, 0.),
-                custom_size: Some(Vec2::new(50.0, 50.0)),
-                ..default()
-            },
-            ..default()
-        })
+        // .insert(SpriteBundle {
+        //     sprite: Sprite {
+        //         color: Color::rgb(0., 0.25, 0.),
+        //         custom_size: Some(Vec2::new(50.0, 50.0)),
+        //         ..default()
+        //     },
+        //     ..default()
+        // })
         .insert(Cursor);
 }
 
@@ -174,23 +218,83 @@ fn move_camera(
         .lerp(new_camera_pos, 0.2);
 }
 
-fn chop_tree(
-    player_query: Query<&Transform, With<Player>>,
-    mut tree_query: Query<(Entity, &Transform, &mut Damage), With<Tree>>,
-    input: Res<Input<KeyCode>>,
+fn drop_house(
+    cursor: Query<(Entity, &Transform), With<Cursor>>,
+    mut commands: Commands,
+    mouse: Res<Input<MouseButton>>,
+    query: Query<&Sprite>,
+    asset_server: Res<AssetServer>,
+) {
+    if query.contains(cursor.single().0) {
+        if mouse.just_pressed(MouseButton::Left) {
+            commands.entity(cursor.single().0).remove::<Sprite>();
+
+            let texture = asset_server.load("cottage.png");
+            commands.spawn((
+                SpriteBundle {
+                    transform: *cursor.single().1,
+                    texture,
+                    ..default()
+                },
+                Collider::cuboid(95.0, 95.0),
+            ));
+        }
+    }
+}
+
+fn pickup_object(
+    rapier_context: Res<RapierContext>,
+    object_query: Query<(Entity, &Transform, &PickableObject)>,
+    mut inv_query: Query<&mut Inventory>,
     mut commands: Commands,
 ) {
-    if input.just_pressed(KeyCode::Space) {
-        let player = player_query.single();
+    for (entity, transform, object) in object_query.iter() {
+        let shape = Collider::cuboid(1.0, 2.0);
+        let shape_pos = transform.translation.truncate();
+        let shape_rot = 0.0;
+        let shape_vel = Vec2::new(0.1, 0.1);
+        let max_toi = 0.0;
+        let filter = QueryFilter::default();
 
-        // Find nearest tree
+        if let Some((_entity, _hit)) =
+            rapier_context.cast_shape(shape_pos, shape_rot, shape_vel, &shape, max_toi, filter)
+        {
+            inv_query
+                .single_mut()
+                .items
+                .entry(*object)
+                .and_modify(|count| *count += 1);
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+}
+
+fn break_object(
+    player_query: Query<&Transform, With<Player>>,
+    mut object_query: Query<(Entity, &Transform, &mut Damage, &WorldObject)>,
+    input: Res<Input<KeyCode>>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    inv_query: Query<&Inventory>,
+    mut anim_query: Query<
+        (
+            &mut AnimationIndices,
+            &mut TextureAtlasSprite,
+            &mut Movement,
+        ),
+        With<Player>,
+    >,
+) {
+    if input.just_pressed(KeyCode::Space) {
+        // Find nearest object
+        let player = player_query.single();
         let mut nearest_entity: Option<(Entity, f32)> = None;
-        for (entity, transform, _) in tree_query.iter() {
+        for (entity, transform, _, _) in object_query.iter() {
             match nearest_entity {
                 None => {
                     let distance = transform.translation.distance(player.translation);
                     nearest_entity = Some((entity, distance));
-                },
+                }
                 Some((_, distance2)) => {
                     let distance = transform.translation.distance(player.translation);
                     if distance < distance2 {
@@ -200,19 +304,114 @@ fn chop_tree(
             }
         }
 
-        // Chop down nearest tree
-        for (entity, _, mut damage) in tree_query.iter_mut() {
+        // Break down nearest object
+        for (entity, transform, mut damage, object) in object_query.iter_mut() {
             match nearest_entity {
                 Some((entity2, distance2)) => {
                     if entity == entity2 {
                         if distance2 < 80.0 {
-                            damage.value -= 1;
+                            let (mut anim_indices, mut sprite, mut movement) =
+                                anim_query.single_mut();
+                            if object == &WorldObject::Tree && inv_query.single().tools[&Tool::Axe]
+                            {
+                                damage.value -= 1;
+                                match *movement {
+                                    Movement::Up => {
+                                        anim_indices.first = 19;
+                                        anim_indices.last = 19;
+                                        *sprite = TextureAtlasSprite::new(19);
+                                    }
+                                    Movement::Down => {
+                                        anim_indices.first = 16;
+                                        anim_indices.last = 16;
+                                        *sprite = TextureAtlasSprite::new(16);
+                                    }
+                                    Movement::Left => {
+                                        anim_indices.first = 17;
+                                        anim_indices.last = 17;
+                                        *sprite = TextureAtlasSprite::new(17);
+                                    }
+                                    Movement::Right => {
+                                        anim_indices.first = 18;
+                                        anim_indices.last = 18;
+                                        *sprite = TextureAtlasSprite::new(18);
+                                    }
+                                    Movement::Working => {}
+                                    Movement::None => {
+                                        anim_indices.first = 16;
+                                        anim_indices.last = 16;
+                                        *sprite = TextureAtlasSprite::new(16);
+                                    }
+                                }
+                                *movement = Movement::Working;
+                            }
+                            if object == &WorldObject::Rock
+                                && inv_query.single().tools[&Tool::Pickaxe]
+                            {
+                                damage.value -= 1;
+                                match *movement {
+                                    Movement::Up => {
+                                        anim_indices.first = 19;
+                                        anim_indices.last = 19;
+                                        *sprite = TextureAtlasSprite::new(19);
+                                    }
+                                    Movement::Down => {
+                                        anim_indices.first = 20;
+                                        anim_indices.last = 20;
+                                        *sprite = TextureAtlasSprite::new(20);
+                                    }
+                                    Movement::Left => {
+                                        anim_indices.first = 21;
+                                        anim_indices.last = 21;
+                                        *sprite = TextureAtlasSprite::new(21);
+                                    }
+                                    Movement::Right => {
+                                        anim_indices.first = 22;
+                                        anim_indices.last = 22;
+                                        *sprite = TextureAtlasSprite::new(22);
+                                    }
+                                    Movement::Working => {}
+                                    Movement::None => {
+                                        anim_indices.first = 20;
+                                        anim_indices.last = 20;
+                                        *sprite = TextureAtlasSprite::new(20);
+                                    }
+                                }
+                                *movement = Movement::Working;
+                            }
                         }
+
                         if damage.value == 0 {
                             commands.entity(entity).despawn_recursive();
+
+                            // Spawn wood
+                            if *object == WorldObject::Tree {
+                                let texture = asset_server.load("wood.png");
+                                commands.spawn((
+                                    SpriteBundle {
+                                        texture,
+                                        transform: *transform,
+                                        ..default()
+                                    },
+                                    PickableObject::Wood,
+                                ));
+                            }
+
+                            // Spawn rocks
+                            if *object == WorldObject::Rock {
+                                let texture = asset_server.load("rocks.png");
+                                commands.spawn((
+                                    SpriteBundle {
+                                        texture,
+                                        transform: *transform,
+                                        ..default()
+                                    },
+                                    PickableObject::Rocks,
+                                ));
+                            }
                         }
                     }
-                },
+                }
                 None => {}
             }
         }
@@ -241,7 +440,7 @@ fn spawn_trees(
                     ..default()
                 },
                 Collider::ball(25.0),
-                Tree,
+                WorldObject::Tree,
                 Damage { value: 3 },
             ));
             trees_num += 1
@@ -250,51 +449,6 @@ fn spawn_trees(
         }
         if trees_num == 10 {
             break;
-        }
-    }
-}
-
-fn break_rock(
-    player_query: Query<&Transform, With<Player>>,
-    mut tree_query: Query<(Entity, &Transform, &mut Damage), With<Rock>>,
-    input: Res<Input<KeyCode>>,
-    mut commands: Commands,
-) {
-    if input.just_pressed(KeyCode::Space) {
-        let player = player_query.single();
-
-        // Find nearest rock
-        let mut nearest_entity: Option<(Entity, f32)> = None;
-        for (entity, transform, _) in tree_query.iter() {
-            match nearest_entity {
-                None => {
-                    let distance = transform.translation.distance(player.translation);
-                    nearest_entity = Some((entity, distance));
-                },
-                Some((_, distance2)) => {
-                    let distance = transform.translation.distance(player.translation);
-                    if distance < distance2 {
-                        nearest_entity = Some((entity, distance));
-                    }
-                }
-            }
-        }
-
-        // Break down nearest rock
-        for (entity, _, mut damage) in tree_query.iter_mut() {
-            match nearest_entity {
-                Some((entity2, distance2)) => {
-                    if entity == entity2 {
-                        if distance2 < 80.0 {
-                            damage.value -= 1;
-                        }
-                        if damage.value == 0 {
-                            commands.entity(entity).despawn_recursive();
-                        }
-                    }
-                },
-                None => {}
-            }
         }
     }
 }
@@ -321,8 +475,8 @@ fn spawn_rocks(
                     ..default()
                 },
                 Collider::ball(25.0),
-                Rock,
-                Damage { value: 3 },
+                WorldObject::Rock,
+                Damage { value: 2 },
             ));
             rocks_num += 1
         } else {
