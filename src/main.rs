@@ -17,6 +17,8 @@ DONE:
 */
 use std::collections::HashMap;
 
+use rand::Rng;
+
 use bevy::{prelude::*, window::PrimaryWindow};
 use bevy_rapier2d::prelude::*;
 
@@ -43,11 +45,11 @@ impl Grid {
         self.placements.push((name, self.world_to_grid(pos)));
     }
 
-    fn is_free(&self, pos: (i32, i32)) -> bool {
+    fn is_free(&self, pos: Vec2) -> bool {
         let mut result = true;
         for placement in self.placements.iter() {
             let (_string, tuple) = placement;
-            if *tuple == pos {
+            if *tuple == self.world_to_grid(pos) {
                 result = false;
                 break;
             }
@@ -441,32 +443,39 @@ fn spawn_trees(
     asset_server: Res<AssetServer>,
     mut grid_query: Query<&mut Grid>,
 ) {
-    let positions = [
-        [200.0, 150.0],
-        [350.0, 0.0],
-        [350.0, 200.0],
-        [-250.0, 100.0],
-        [-150.0, 150.0],
-        [300.0, -250.0],
-        [400.0, -150.0],
-        [-200.0, -100.0],
-        [-400.0, -250.0],
-        [-100.0, -300.0],
-    ];
-    for pos in positions {
+    let mut rng = rand::thread_rng();
+    let mut trees_num = 0;
+    loop {
+        let x = rng.gen_range(-700.0..700.0);
+        let y = rng.gen_range(-700.0..700.0);
+        let vec = Vec2::new(x, y);
+        // Don't spawn near player
+        if x < 100.0 && x > -100.0 || y < 100.0 && y > -100.0 {
+            continue
+        }
+
         let mut grid = grid_query.single_mut();
-        grid.place_object("tree".to_string(), Vec2::new(pos[0], pos[1]));
-        let texture = asset_server.load("tree.png");
-        commands.spawn((
-            SpriteBundle {
-                texture,
-                transform: Transform::from_xyz(pos[0], pos[1], 0.0),
-                ..default()
-            },
-            Collider::ball(25.0),
-            WorldObject::Tree,
-            Damage { value: 3 },
-        ));
+        if grid.is_free(vec) {
+            let vec2 = grid.grid_to_world(grid.world_to_grid(vec));
+            grid.place_object("tree".to_string(), vec);
+            let texture = asset_server.load("tree.png");
+            commands.spawn((
+                SpriteBundle {
+                    texture,
+                    transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
+                    ..default()
+                },
+                Collider::ball(25.0),
+                WorldObject::Tree,
+                Damage { value: 3 },
+            ));
+            trees_num += 1
+        } else {
+            continue;
+        }
+        if trees_num == 20 {
+            break;
+        }
     }
 }
 
@@ -475,31 +484,38 @@ fn spawn_rocks(
     asset_server: Res<AssetServer>,
     mut grid_query: Query<&mut Grid>,
 ) {
-    let positions = [
-        [50.0, 50.0],
-        [300.0, 350.0],
-        [200.0, 250.0],
-        [-150.0, 300.0],
-        [-400.0, 100.0],
-        [250.0, -150.0],
-        [50.0, -250.0],
-        [-300.0, -150.0],
-        [-250.0, -400.0],
-        [-450.0, -50.0],
-    ];
-    for pos in positions {
+    let mut rng = rand::thread_rng();
+    let mut rocks_num = 0;
+    loop {
+        let x = rng.gen_range(-700.0..700.0);
+        let y = rng.gen_range(-700.0..700.0);
+        let vec = Vec2::new(x, y);
+        // Don't spawn near player
+        if x < 100.0 && x > -100.0 || y < 100.0 && y > -100.0 {
+            continue
+        }
+
         let mut grid = grid_query.single_mut();
-        grid.place_object("rock".to_string(), Vec2::new(pos[0], pos[1]));
-        let texture = asset_server.load("rock.png");
-        commands.spawn((
-            SpriteBundle {
-                texture,
-                transform: Transform::from_xyz(pos[0], pos[1], 0.0),
-                ..default()
-            },
-            Collider::ball(25.0),
-            WorldObject::Rock,
-            Damage { value: 2 },
-        ));
+        if grid.is_free(vec) {
+            let vec2 = grid.grid_to_world(grid.world_to_grid(vec));
+            grid.place_object("rock".to_string(), vec);
+            let texture = asset_server.load("rock.png");
+            commands.spawn((
+                SpriteBundle {
+                    texture,
+                    transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
+                    ..default()
+                },
+                Collider::ball(25.0),
+                WorldObject::Rock,
+                Damage { value: 2 },
+            ));
+            rocks_num += 1
+        } else {
+            continue;
+        }
+        if rocks_num == 20 {
+            break;
+        }
     }
 }
