@@ -25,7 +25,7 @@ use bevy_rapier2d::prelude::*;
 mod player;
 mod ui;
 use player::{AnimationIndices, Movement, Player};
-use ui::HouseButton;
+use ui::{HouseButton, OnCursor};
 
 #[derive(Component)]
 struct Grid {
@@ -77,6 +77,24 @@ impl Grid {
 }
 
 #[derive(Component)]
+pub struct Inventory {
+    items: HashMap<InventoryObject, i32>,
+    tools: HashMap<Tool, bool>,
+    recipes: HashMap<Recipe, Vec<(InventoryObject, i32)>>,
+}
+
+impl Inventory {
+    fn recipe_satisfied(&self, recipe: Recipe) -> bool {
+        for (inventory_object, count) in &self.recipes[&recipe] {
+            if &self.items[&inventory_object] >= count {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+#[derive(Component)]
 struct MainCamera;
 
 #[derive(Component)]
@@ -89,7 +107,7 @@ enum WorldObject {
 }
 
 #[derive(Component, PartialEq, Eq, Hash, Debug, Clone, Copy)]
-enum PickableObject {
+enum InventoryObject {
     Wood,
     Rocks,
 }
@@ -102,7 +120,14 @@ enum Tool {
 
 #[derive(Component, PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum Recipe {
-    House,
+    Corner1,
+    Corner2,
+    Corner3,
+    Corner4,
+    Wall1,
+    Wall2,
+    Wall3,
+    Door
 }
 
 #[derive(Component)]
@@ -111,11 +136,7 @@ struct Damage {
 }
 
 #[derive(Component)]
-pub struct Inventory {
-    items: HashMap<PickableObject, i32>,
-    tools: HashMap<Tool, bool>,
-    recipes: HashMap<Recipe, bool>,
-}
+struct YSort;
 
 fn main() {
     App::new()
@@ -134,12 +155,12 @@ fn main() {
                 })
                 .build(),
             RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0),
-            // RapierDebugRenderPlugin::default(),
+            RapierDebugRenderPlugin::default(),
             player::PlayerPlugin,
             ui::UiPlugin,
         ))
         .add_systems(Startup, setup)
-        .add_systems(PostStartup, (spawn_trees, spawn_rocks))
+        .add_systems(PostStartup, (spawn_trees, spawn_rocks, spawn_grass))
         .add_systems(
             Update,
             (
@@ -148,6 +169,7 @@ fn main() {
                 pickup_object,
                 move_cursor,
                 drop_house,
+                y_sort,
             ),
         )
         .run();
@@ -159,9 +181,42 @@ fn setup(mut commands: Commands) {
     commands.spawn(Grid::new(50.0));
 
     commands.spawn(Inventory {
-        items: HashMap::from([(PickableObject::Wood, 0), (PickableObject::Rocks, 0)]),
+        items: HashMap::from([(InventoryObject::Wood, 20), (InventoryObject::Rocks, 20)]),
         tools: HashMap::from([(Tool::Axe, false), (Tool::Pickaxe, false)]),
-        recipes: HashMap::from([(Recipe::House, false)]),
+        recipes: HashMap::from([
+            (
+                Recipe::Corner1,
+                vec![(InventoryObject::Wood, 1), (InventoryObject::Rocks, 1)],
+            ),
+            (
+                Recipe::Corner2,
+                vec![(InventoryObject::Wood, 1), (InventoryObject::Rocks, 1)],
+            ),
+            (
+                Recipe::Corner3,
+                vec![(InventoryObject::Wood, 1), (InventoryObject::Rocks, 1)],
+            ),
+            (
+                Recipe::Corner4,
+                vec![(InventoryObject::Wood, 1), (InventoryObject::Rocks, 1)],
+            ),
+            (
+                Recipe::Wall1,
+                vec![(InventoryObject::Wood, 1), (InventoryObject::Rocks, 1)],
+            ),
+            (
+                Recipe::Wall2,
+                vec![(InventoryObject::Wood, 1), (InventoryObject::Rocks, 1)],
+            ),
+            (
+                Recipe::Wall3,
+                vec![(InventoryObject::Wood, 1), (InventoryObject::Rocks, 1)],
+            ),
+            (
+                Recipe::Door,
+                vec![(InventoryObject::Wood, 1)],
+            ),
+        ]),
     });
 
     // Setup cursor
@@ -182,6 +237,14 @@ fn setup(mut commands: Commands) {
         //     ..default()
         // })
         .insert(Cursor);
+}
+
+fn y_sort(
+    mut query: Query<(&mut Transform, &YSort)>,
+) {
+    for (mut transform, _) in query.iter_mut() {
+        transform.translation.z = -(1.0 / (1.0 + (2.0f32.powf(-0.01*transform.translation.y))));
+    }
 }
 
 fn move_cursor(
@@ -224,47 +287,288 @@ fn move_camera(
 
 fn drop_house(
     cursor: Query<(Entity, &Transform), With<Cursor>>,
+    cursor2: Query<&OnCursor, With<Cursor>>,
     mut commands: Commands,
     mouse: Res<Input<MouseButton>>,
-    query: Query<&Sprite>,
+    sprite_query: Query<&Sprite>,
     asset_server: Res<AssetServer>,
     mut inv_query: Query<&mut Inventory>,
-    text_query: Query<Entity, With<HouseButton>>,
+    button_query: Query<&HouseButton>,
 ) {
-    if query.contains(cursor.single().0) {
+    if sprite_query.contains(cursor.single().0) {
         if mouse.just_pressed(MouseButton::Left) {
             commands.entity(cursor.single().0).remove::<Sprite>();
 
-            let texture = asset_server.load("cottage.png");
-            commands.spawn((
-                SpriteBundle {
-                    transform: *cursor.single().1,
-                    texture,
-                    ..default()
-                },
-                Collider::cuboid(95.0, 95.0),
-            ));
+            for house_part in button_query.iter() {
+                // Corner 1
+                if *cursor2.single() == OnCursor::Corner1
+                    && *house_part == HouseButton::Corner1
+                    && inv_query.single().recipe_satisfied(Recipe::Corner1)
+                {
+                    let texture = asset_server.load("corner1.png");
+                    
+                    commands.spawn((
+                        SpriteBundle {
+                            transform: *cursor.single().1,
+                            texture,
+                            ..default()
+                        },
+                        Collider::compound(vec![
+                            (Vect::new(-50.0, -25.0), 0.0, Collider::cuboid(25.0, 50.0)),
+                            (Vect::new(0.0, -100.0), 0.0, Collider::cuboid(75.0, 25.0)),
+                        ]),
+                        YSort,
+                    ));
 
-            inv_query
-                .single_mut()
-                .items
-                .entry(PickableObject::Rocks)
-                .and_modify(|count| *count -= 5);
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Rocks)
+                        .and_modify(|count| *count -= 1);
 
-            inv_query
-                .single_mut()
-                .items
-                .entry(PickableObject::Wood)
-                .and_modify(|count| *count -= 5);
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Wood)
+                        .and_modify(|count| *count -= 1);
 
-            commands.entity(text_query.single()).despawn_descendants();
+                    commands.entity(cursor.single().0).remove::<OnCursor>();
+                }
+                // Corner 2
+                if *cursor2.single() == OnCursor::Corner2
+                    && *house_part == HouseButton::Corner2
+                    && inv_query.single().recipe_satisfied(Recipe::Corner2)
+                {
+                    let texture = asset_server.load("corner2.png");
+                    
+                    commands.spawn((
+                        SpriteBundle {
+                            transform: *cursor.single().1,
+                            texture,
+                            ..default()
+                        },
+                        Collider::compound(vec![
+                            (Vect::new(-50.0, -75.0), 0.0, Collider::cuboid(25.0, 50.0)),
+                            (Vect::new(0.0, 0.0), 0.0, Collider::cuboid(75.0, 25.0)),
+                        ]),
+                        YSort,
+                    ));
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Rocks)
+                        .and_modify(|count| *count -= 1);
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Wood)
+                        .and_modify(|count| *count -= 1);
+
+                    commands.entity(cursor.single().0).remove::<OnCursor>();
+                }
+                // Corner 3
+                if *cursor2.single() == OnCursor::Corner3
+                    && *house_part == HouseButton::Corner3
+                    && inv_query.single().recipe_satisfied(Recipe::Corner3)
+                {
+                    let texture = asset_server.load("corner3.png");
+                    
+                    commands.spawn((
+                        SpriteBundle {
+                            transform: *cursor.single().1,
+                            texture,
+                            ..default()
+                        },
+                        Collider::compound(vec![
+                            (Vect::new(50.0, -75.0), 0.0, Collider::cuboid(25.0, 50.0)),
+                            (Vect::new(0.0, 0.0), 0.0, Collider::cuboid(75.0, 25.0)),
+                        ]),
+                        YSort,
+                    ));
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Rocks)
+                        .and_modify(|count| *count -= 1);
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Wood)
+                        .and_modify(|count| *count -= 1);
+
+                    commands.entity(cursor.single().0).remove::<OnCursor>();
+                }
+                // Corner 4
+                if *cursor2.single() == OnCursor::Corner4
+                    && *house_part == HouseButton::Corner4
+                    && inv_query.single().recipe_satisfied(Recipe::Corner4)
+                {
+                    let texture = asset_server.load("corner4.png");
+                    
+                    commands.spawn((
+                        SpriteBundle {
+                            transform: *cursor.single().1,
+                            texture,
+                            ..default()
+                        },
+                        Collider::compound(vec![
+                            (Vect::new(50.0, -25.0), 0.0, Collider::cuboid(25.0, 50.0)),
+                            (Vect::new(0.0, -100.0), 0.0, Collider::cuboid(75.0, 25.0)),
+                        ]),
+                        YSort,
+                    ));
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Rocks)
+                        .and_modify(|count| *count -= 1);
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Wood)
+                        .and_modify(|count| *count -= 1);
+
+                    commands.entity(cursor.single().0).remove::<OnCursor>();
+                }
+                // Wall 1
+                if *cursor2.single() == OnCursor::Wall1
+                    && *house_part == HouseButton::Wall1
+                    && inv_query.single().recipe_satisfied(Recipe::Wall1)
+                {
+                    let texture = asset_server.load("wall1.png");
+                    commands.spawn((
+                        SpriteBundle {
+                            transform: *cursor.single().1,
+                            texture,
+                            ..default()
+                        },
+                        Collider::compound(vec![
+                            (Vect::new(0.0, -50.0), 0.0, Collider::cuboid(25.0, 75.0)),
+                        ]),
+                        YSort,
+                    ));
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Rocks)
+                        .and_modify(|count| *count -= 1);
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Wood)
+                        .and_modify(|count| *count -= 1);
+
+                    commands.entity(cursor.single().0).remove::<OnCursor>();
+                }
+                // Wall 2
+                if *cursor2.single() == OnCursor::Wall2
+                    && *house_part == HouseButton::Wall2
+                    && inv_query.single().recipe_satisfied(Recipe::Wall2)
+                {
+                    let texture = asset_server.load("wall2.png");
+                    commands.spawn((
+                        SpriteBundle {
+                            transform: *cursor.single().1,
+                            texture,
+                            ..default()
+                        },
+                        Collider::compound(vec![
+                            (Vect::new(0.0, -50.0), 0.0, Collider::cuboid(75.0, 25.0)),
+                        ]),
+                        YSort,
+                    ));
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Rocks)
+                        .and_modify(|count| *count -= 1);
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Wood)
+                        .and_modify(|count| *count -= 1);
+
+                    commands.entity(cursor.single().0).remove::<OnCursor>();
+                }
+                // Wall 3
+                if *cursor2.single() == OnCursor::Wall3
+                    && *house_part == HouseButton::Wall3
+                    && inv_query.single().recipe_satisfied(Recipe::Wall3)
+                {
+                    let texture = asset_server.load("wall3.png");
+                    commands.spawn((
+                        SpriteBundle {
+                            transform: *cursor.single().1,
+                            texture,
+                            ..default()
+                        },
+                        Collider::compound(vec![
+                            (Vect::new(0.0, -50.0), 0.0, Collider::cuboid(25.0, 25.0)),
+                        ]),
+                        YSort,
+                    ));
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Rocks)
+                        .and_modify(|count| *count -= 1);
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Wood)
+                        .and_modify(|count| *count -= 1);
+
+                    commands.entity(cursor.single().0).remove::<OnCursor>();
+                }
+                // Door
+                if *cursor2.single() == OnCursor::Door
+                    && *house_part == HouseButton::Door
+                    && inv_query.single().recipe_satisfied(Recipe::Door)
+                {
+                    let texture = asset_server.load("door.png");
+                    commands.spawn((
+                        SpriteBundle {
+                            transform: *cursor.single().1,
+                            texture,
+                            ..default()
+                        },
+                        YSort,
+                    ));
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Rocks)
+                        .and_modify(|count| *count -= 1);
+
+                    inv_query
+                        .single_mut()
+                        .items
+                        .entry(InventoryObject::Wood)
+                        .and_modify(|count| *count -= 1);
+
+                    commands.entity(cursor.single().0).remove::<OnCursor>();
+                }
+            }
         }
     }
 }
 
 fn pickup_object(
     rapier_context: Res<RapierContext>,
-    object_query: Query<(Entity, &Transform, &PickableObject)>,
+    object_query: Query<(Entity, &Transform, &InventoryObject)>,
     mut inv_query: Query<&mut Inventory>,
     mut commands: Commands,
 ) {
@@ -413,7 +717,7 @@ fn break_object(
                                         transform: *transform,
                                         ..default()
                                     },
-                                    PickableObject::Wood,
+                                    InventoryObject::Wood,
                                 ));
                             }
 
@@ -426,7 +730,7 @@ fn break_object(
                                         transform: *transform,
                                         ..default()
                                     },
-                                    PickableObject::Rocks,
+                                    InventoryObject::Rocks,
                                 ));
                             }
                         }
@@ -451,7 +755,7 @@ fn spawn_trees(
         let vec = Vec2::new(x, y);
         // Don't spawn near player
         if x < 100.0 && x > -100.0 || y < 100.0 && y > -100.0 {
-            continue
+            continue;
         }
 
         let mut grid = grid_query.single_mut();
@@ -465,9 +769,10 @@ fn spawn_trees(
                     transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
                     ..default()
                 },
-                Collider::ball(25.0),
+                Collider::convex_hull(&[Vect::new(-20.0, -40.0), Vect::new(20.0, -40.0), Vect::new(-20.0, 0.0), Vect::new(20.0, 0.0)],).unwrap(),
                 WorldObject::Tree,
                 Damage { value: 3 },
+                YSort,
             ));
             trees_num += 1
         } else {
@@ -492,7 +797,7 @@ fn spawn_rocks(
         let vec = Vec2::new(x, y);
         // Don't spawn near player
         if x < 100.0 && x > -100.0 || y < 100.0 && y > -100.0 {
-            continue
+            continue;
         }
 
         let mut grid = grid_query.single_mut();
@@ -506,15 +811,51 @@ fn spawn_rocks(
                     transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
                     ..default()
                 },
-                Collider::ball(25.0),
+                Collider::convex_hull(&[Vect::new(-20.0, -20.0), Vect::new(20.0, -20.0), Vect::new(-20.0, 0.0), Vect::new(20.0, 0.0)],).unwrap(),
                 WorldObject::Rock,
                 Damage { value: 2 },
+                YSort,
             ));
             rocks_num += 1
         } else {
             continue;
         }
         if rocks_num == 20 {
+            break;
+        }
+    }
+}
+
+fn spawn_grass(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut grid_query: Query<&mut Grid>,
+) {
+    let mut rng = rand::thread_rng();
+    let mut grass_num = 0;
+    loop {
+        let x = rng.gen_range(-700.0..700.0);
+        let y = rng.gen_range(-700.0..700.0);
+        let vec = Vec2::new(x, y);
+
+        let mut grid = grid_query.single_mut();
+        if grid.is_free(vec) {
+            let vec2 = grid.grid_to_world(grid.world_to_grid(vec));
+            grid.place_object("grass".to_string(), vec);
+            let texture = asset_server.load("grass.png");
+            commands.spawn((
+                SpriteBundle {
+                    texture,
+                    transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
+                    ..default()
+                },
+                YSort,
+            ));
+            grass_num += 1
+        } else {
+            continue;
+        }
+        if grass_num == 20 {
             break;
         }
     }

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
 
-use crate::Grid;
+use crate::{Grid, YSort};
 
 #[derive(Component)]
 pub struct Player;
@@ -59,8 +59,9 @@ fn setup_player(
         AnimationTimer(Timer::from_seconds(0.3, TimerMode::Repeating)),
         KinematicCharacterController::default(),
         RigidBody::KinematicVelocityBased,
-        Collider::capsule_y(25.0, 25.0),
+        Collider::convex_hull(&[Vect::new(-10.0, -50.0), Vect::new(10.0, -50.0), Vect::new(-10.0, 0.0), Vect::new(10.0, 0.0)],).unwrap(),
         Movement::None,
+        YSort
     ));
 }
 
