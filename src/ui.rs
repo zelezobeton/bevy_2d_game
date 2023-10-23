@@ -14,7 +14,7 @@ pub struct AxeButton;
 pub struct PickaxeButton;
 
 #[derive(Component, PartialEq)]
-pub enum HouseButton {
+pub enum House {
     Corner1,
     Corner2,
     Corner3,
@@ -22,10 +22,10 @@ pub enum HouseButton {
     Wall1,
     Wall2,
     Wall3,
-    Door
+    Door,
 }
 
-#[derive(Component, PartialEq)]
+#[derive(Component, PartialEq, Debug)]
 pub enum OnCursor {
     Corner1,
     Corner2,
@@ -34,7 +34,7 @@ pub enum OnCursor {
     Wall1,
     Wall2,
     Wall3,
-    Door
+    Door,
 }
 
 pub struct UiPlugin;
@@ -75,61 +75,61 @@ pub fn update_rocks_text(
 }
 
 fn color_house_button(
-    mut button_query: Query<(&HouseButton, &mut BackgroundColor)>,
+    mut button_query: Query<(&House, &mut BackgroundColor)>,
     inv_query: Query<&Inventory>,
 ) {
     for (house_part, mut background_color) in button_query.iter_mut() {
         match *house_part {
-            HouseButton::Corner1 => {
+            House::Corner1 => {
                 if inv_query.single().recipe_satisfied(Recipe::Corner1) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
-            HouseButton::Corner2 => {
+            House::Corner2 => {
                 if inv_query.single().recipe_satisfied(Recipe::Corner2) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
-            HouseButton::Corner3 => {
+            House::Corner3 => {
                 if inv_query.single().recipe_satisfied(Recipe::Corner3) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
-            HouseButton::Corner4 => {
+            House::Corner4 => {
                 if inv_query.single().recipe_satisfied(Recipe::Corner4) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
-            HouseButton::Wall1 => {
+            House::Wall1 => {
                 if inv_query.single().recipe_satisfied(Recipe::Wall1) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
-            HouseButton::Wall2 => {
+            House::Wall2 => {
                 if inv_query.single().recipe_satisfied(Recipe::Wall2) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
-            HouseButton::Wall3 => {
+            House::Wall3 => {
                 if inv_query.single().recipe_satisfied(Recipe::Wall3) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
-            HouseButton::Door => {
+            House::Door => {
                 if inv_query.single().recipe_satisfied(Recipe::Door) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
@@ -140,8 +140,8 @@ fn color_house_button(
     }
 }
 
-pub fn interact_with_house_button(
-    mut button_query: Query<(&Interaction, &mut BorderColor, &HouseButton), Changed<Interaction>>,
+fn interact_with_house_button(
+    mut button_query: Query<(&Interaction, &mut BorderColor, &House), Changed<Interaction>>,
     cursor: Query<(Entity, &Transform), With<Cursor>>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -150,7 +150,7 @@ pub fn interact_with_house_button(
     for (interaction, mut border_color, house_part) in button_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => match house_part {
-                HouseButton::Corner1 => {
+                House::Corner1 => {
                     *border_color = Color::WHITE.into();
                     if inv_query.single().recipe_satisfied(Recipe::Corner1) {
                         let texture = asset_server.load("corner1.png");
@@ -163,8 +163,8 @@ pub fn interact_with_house_button(
                             })
                             .insert(OnCursor::Corner1);
                     }
-                },
-                HouseButton::Corner2 => {
+                }
+                House::Corner2 => {
                     *border_color = Color::WHITE.into();
                     if inv_query.single().recipe_satisfied(Recipe::Corner2) {
                         let texture = asset_server.load("corner2.png");
@@ -177,8 +177,8 @@ pub fn interact_with_house_button(
                             })
                             .insert(OnCursor::Corner2);
                     }
-                },
-                HouseButton::Corner3 => {
+                }
+                House::Corner3 => {
                     *border_color = Color::WHITE.into();
                     if inv_query.single().recipe_satisfied(Recipe::Corner3) {
                         let texture = asset_server.load("corner3.png");
@@ -191,8 +191,8 @@ pub fn interact_with_house_button(
                             })
                             .insert(OnCursor::Corner3);
                     }
-                },
-                HouseButton::Corner4 => {
+                }
+                House::Corner4 => {
                     *border_color = Color::WHITE.into();
                     if inv_query.single().recipe_satisfied(Recipe::Corner4) {
                         let texture = asset_server.load("corner4.png");
@@ -205,8 +205,8 @@ pub fn interact_with_house_button(
                             })
                             .insert(OnCursor::Corner4);
                     }
-                },
-                HouseButton::Wall1 => {
+                }
+                House::Wall1 => {
                     *border_color = Color::WHITE.into();
                     if inv_query.single().recipe_satisfied(Recipe::Wall1) {
                         let texture = asset_server.load("wall1.png");
@@ -219,8 +219,8 @@ pub fn interact_with_house_button(
                             })
                             .insert(OnCursor::Wall1);
                     }
-                },
-                HouseButton::Wall2 => {
+                }
+                House::Wall2 => {
                     *border_color = Color::WHITE.into();
                     if inv_query.single().recipe_satisfied(Recipe::Wall2) {
                         let texture = asset_server.load("wall2.png");
@@ -233,8 +233,8 @@ pub fn interact_with_house_button(
                             })
                             .insert(OnCursor::Wall2);
                     }
-                },
-                HouseButton::Wall3 => {
+                }
+                House::Wall3 => {
                     *border_color = Color::WHITE.into();
                     if inv_query.single().recipe_satisfied(Recipe::Wall3) {
                         let texture = asset_server.load("wall3.png");
@@ -247,8 +247,8 @@ pub fn interact_with_house_button(
                             })
                             .insert(OnCursor::Wall3);
                     }
-                },
-                HouseButton::Door => {
+                }
+                House::Door => {
                     *border_color = Color::WHITE.into();
                     if inv_query.single().recipe_satisfied(Recipe::Door) {
                         let texture = asset_server.load("door.png");
@@ -520,7 +520,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                                 ..default()
                             },
-                            HouseButton::Wall1,
+                            House::Wall1,
                         ))
                         .with_children(|parent| {
                             parent.spawn(ImageBundle {
@@ -545,7 +545,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                                 ..default()
                             },
-                            HouseButton::Wall2,
+                            House::Wall2,
                         ))
                         .with_children(|parent| {
                             parent.spawn(ImageBundle {
@@ -570,7 +570,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                                 ..default()
                             },
-                            HouseButton::Wall3,
+                            House::Wall3,
                         ))
                         .with_children(|parent| {
                             parent.spawn(ImageBundle {
@@ -595,7 +595,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                                 ..default()
                             },
-                            HouseButton::Corner1,
+                            House::Corner1,
                         ))
                         .with_children(|parent| {
                             parent.spawn(ImageBundle {
@@ -620,7 +620,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                                 ..default()
                             },
-                            HouseButton::Corner2,
+                            House::Corner2,
                         ))
                         .with_children(|parent| {
                             parent.spawn(ImageBundle {
@@ -645,7 +645,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                                 ..default()
                             },
-                            HouseButton::Corner3,
+                            House::Corner3,
                         ))
                         .with_children(|parent| {
                             parent.spawn(ImageBundle {
@@ -670,7 +670,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                                 ..default()
                             },
-                            HouseButton::Corner4,
+                            House::Corner4,
                         ))
                         .with_children(|parent| {
                             parent.spawn(ImageBundle {
@@ -695,7 +695,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                                 ..default()
                             },
-                            HouseButton::Door,
+                            House::Door,
                         ))
                         .with_children(|parent| {
                             parent.spawn(ImageBundle {
