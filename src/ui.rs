@@ -13,7 +13,7 @@ pub struct AxeButton;
 #[derive(Component)]
 pub struct PickaxeButton;
 
-#[derive(Component, PartialEq)]
+#[derive(Component, PartialEq, Eq, Hash, Debug, Clone)]
 pub enum House {
     Corner1,
     Corner2,
@@ -25,17 +25,8 @@ pub enum House {
     Door,
 }
 
-#[derive(Component, PartialEq, Debug)]
-pub enum OnCursor {
-    Corner1,
-    Corner2,
-    Corner3,
-    Corner4,
-    Wall1,
-    Wall2,
-    Wall3,
-    Door,
-}
+#[derive(Component, PartialEq)]
+pub struct OnCursor(pub House);
 
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
@@ -81,56 +72,56 @@ fn color_house_button(
     for (house_part, mut background_color) in button_query.iter_mut() {
         match *house_part {
             House::Corner1 => {
-                if inv_query.single().recipe_satisfied(Recipe::Corner1) {
+                if inv_query.single().recipe_satisfied(Recipe(House::Corner1)) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
             House::Corner2 => {
-                if inv_query.single().recipe_satisfied(Recipe::Corner2) {
+                if inv_query.single().recipe_satisfied(Recipe(House::Corner2)) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
             House::Corner3 => {
-                if inv_query.single().recipe_satisfied(Recipe::Corner3) {
+                if inv_query.single().recipe_satisfied(Recipe(House::Corner3)) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
             House::Corner4 => {
-                if inv_query.single().recipe_satisfied(Recipe::Corner4) {
+                if inv_query.single().recipe_satisfied(Recipe(House::Corner4)) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
             House::Wall1 => {
-                if inv_query.single().recipe_satisfied(Recipe::Wall1) {
+                if inv_query.single().recipe_satisfied(Recipe(House::Wall1)) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
             House::Wall2 => {
-                if inv_query.single().recipe_satisfied(Recipe::Wall2) {
+                if inv_query.single().recipe_satisfied(Recipe(House::Wall2)) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
             House::Wall3 => {
-                if inv_query.single().recipe_satisfied(Recipe::Wall3) {
+                if inv_query.single().recipe_satisfied(Recipe(House::Wall3)) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
                 }
             }
             House::Door => {
-                if inv_query.single().recipe_satisfied(Recipe::Door) {
+                if inv_query.single().recipe_satisfied(Recipe(House::Door)) {
                     *background_color = Color::rgb(0.0, 0.65, 0.0).into();
                 } else {
                     *background_color = Color::RED.into();
@@ -152,7 +143,7 @@ fn interact_with_house_button(
             Interaction::Pressed => match house_part {
                 House::Corner1 => {
                     *border_color = Color::WHITE.into();
-                    if inv_query.single().recipe_satisfied(Recipe::Corner1) {
+                    if inv_query.single().recipe_satisfied(Recipe(House::Corner1)) {
                         let texture = asset_server.load("corner1.png");
                         commands
                             .entity(cursor.single().0)
@@ -161,12 +152,12 @@ fn interact_with_house_button(
                                 texture,
                                 ..default()
                             })
-                            .insert(OnCursor::Corner1);
+                            .insert(OnCursor(House::Corner1));
                     }
                 }
                 House::Corner2 => {
                     *border_color = Color::WHITE.into();
-                    if inv_query.single().recipe_satisfied(Recipe::Corner2) {
+                    if inv_query.single().recipe_satisfied(Recipe(House::Corner2)) {
                         let texture = asset_server.load("corner2.png");
                         commands
                             .entity(cursor.single().0)
@@ -175,12 +166,12 @@ fn interact_with_house_button(
                                 texture,
                                 ..default()
                             })
-                            .insert(OnCursor::Corner2);
+                            .insert(OnCursor(House::Corner2));
                     }
                 }
                 House::Corner3 => {
                     *border_color = Color::WHITE.into();
-                    if inv_query.single().recipe_satisfied(Recipe::Corner3) {
+                    if inv_query.single().recipe_satisfied(Recipe(House::Corner3)) {
                         let texture = asset_server.load("corner3.png");
                         commands
                             .entity(cursor.single().0)
@@ -189,12 +180,12 @@ fn interact_with_house_button(
                                 texture,
                                 ..default()
                             })
-                            .insert(OnCursor::Corner3);
+                            .insert(OnCursor(House::Corner3));
                     }
                 }
                 House::Corner4 => {
                     *border_color = Color::WHITE.into();
-                    if inv_query.single().recipe_satisfied(Recipe::Corner4) {
+                    if inv_query.single().recipe_satisfied(Recipe(House::Corner4)) {
                         let texture = asset_server.load("corner4.png");
                         commands
                             .entity(cursor.single().0)
@@ -203,12 +194,12 @@ fn interact_with_house_button(
                                 texture,
                                 ..default()
                             })
-                            .insert(OnCursor::Corner4);
+                            .insert(OnCursor(House::Corner4));
                     }
                 }
                 House::Wall1 => {
                     *border_color = Color::WHITE.into();
-                    if inv_query.single().recipe_satisfied(Recipe::Wall1) {
+                    if inv_query.single().recipe_satisfied(Recipe(House::Wall1)) {
                         let texture = asset_server.load("wall1.png");
                         commands
                             .entity(cursor.single().0)
@@ -217,12 +208,12 @@ fn interact_with_house_button(
                                 texture,
                                 ..default()
                             })
-                            .insert(OnCursor::Wall1);
+                            .insert(OnCursor(House::Wall1));
                     }
                 }
                 House::Wall2 => {
                     *border_color = Color::WHITE.into();
-                    if inv_query.single().recipe_satisfied(Recipe::Wall2) {
+                    if inv_query.single().recipe_satisfied(Recipe(House::Wall2)) {
                         let texture = asset_server.load("wall2.png");
                         commands
                             .entity(cursor.single().0)
@@ -231,12 +222,13 @@ fn interact_with_house_button(
                                 texture,
                                 ..default()
                             })
-                            .insert(OnCursor::Wall2);
+                            .insert(OnCursor(House::Wall2));
+
                     }
                 }
                 House::Wall3 => {
                     *border_color = Color::WHITE.into();
-                    if inv_query.single().recipe_satisfied(Recipe::Wall3) {
+                    if inv_query.single().recipe_satisfied(Recipe(House::Wall3)) {
                         let texture = asset_server.load("wall3.png");
                         commands
                             .entity(cursor.single().0)
@@ -245,12 +237,12 @@ fn interact_with_house_button(
                                 texture,
                                 ..default()
                             })
-                            .insert(OnCursor::Wall3);
+                            .insert(OnCursor(House::Wall3));
                     }
                 }
                 House::Door => {
                     *border_color = Color::WHITE.into();
-                    if inv_query.single().recipe_satisfied(Recipe::Door) {
+                    if inv_query.single().recipe_satisfied(Recipe(House::Door)) {
                         let texture = asset_server.load("door.png");
                         commands
                             .entity(cursor.single().0)
@@ -259,7 +251,7 @@ fn interact_with_house_button(
                                 texture,
                                 ..default()
                             })
-                            .insert(OnCursor::Door);
+                            .insert(OnCursor(House::Door));
                     }
                 }
             },
