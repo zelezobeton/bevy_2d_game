@@ -15,12 +15,11 @@ DONE:
 - Let camera follow the player
 - Add colisions
 */
-use std::{collections::HashMap, process::id};
+use std::collections::HashMap;
 
 use rand::Rng;
 
 use bevy::{prelude::*, window::PrimaryWindow};
-use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
 
 mod player;
@@ -95,69 +94,6 @@ impl Inventory {
     }
 }
 
-#[derive(Component, Clone)]
-struct ActiveHouseParts {
-    parts: Vec<(House, (i32, i32))>,
-}
-
-impl ActiveHouseParts {
-    fn get_most_southwest_corner1(&self) -> (i32, i32) {
-        let mut x: Option<i32> = None;
-        let mut y: Option<i32> = None;
-        for (house_part, (a, b)) in self.parts.iter() {
-            if *house_part == House::Corner1 {
-                if x == None && y == None {
-                    x = Some(*a);
-                    y = Some(*b);
-                } else {
-                    if a < &x.unwrap() {
-                        x = Some(*a);
-                    }
-                    if b < &y.unwrap() {
-                        y = Some(*b);
-                    }
-                }
-            }
-        }
-        if x == None && y == None {
-            x = Some(0);
-            y = Some(0);
-        }
-        (x.unwrap(), y.unwrap())
-    }
-
-    fn get_most_northeast_corner3(&self) -> (i32, i32) {
-        let mut x: Option<i32> = None;
-        let mut y: Option<i32> = None;
-        for (house_part, (a, b)) in self.parts.iter() {
-            if *house_part == House::Corner3 {
-                if x == None && y == None {
-                    x = Some(*a);
-                    y = Some(*b);
-                } else {
-                    if a > &x.unwrap() {
-                        x = Some(*a);
-                    }
-                    if b > &y.unwrap() {
-                        y = Some(*b);
-                    }
-                }
-            }
-        }
-        if x == None && y == None {
-            x = Some(0);
-            y = Some(0);
-        }
-        (x.unwrap(), y.unwrap())
-    }
-}
-
-#[derive(Component)]
-struct HouseParts {
-    parts: Vec<(House, (i32, i32))>,
-    roof_entities: Vec<Entity>,
-}
-
 #[derive(Component)]
 struct MainCamera;
 
@@ -196,7 +132,6 @@ struct YSort;
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.0, 0.5, 0.0)))
-        .insert_resource(Msaa::Sample4)
         .add_plugins((
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())
@@ -214,7 +149,6 @@ fn main() {
             RapierDebugRenderPlugin::default(),
             player::PlayerPlugin,
             ui::UiPlugin,
-            ShapePlugin,
         ))
         .add_systems(Startup, setup)
         .add_systems(PostStartup, (spawn_trees, spawn_rocks, spawn_grass))
@@ -227,8 +161,6 @@ fn main() {
                 move_cursor,
                 drop_house_parts,
                 y_sort,
-                build_house,
-                hide_roof
             ),
         )
         .run();
@@ -238,8 +170,6 @@ fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default()).insert(MainCamera);
 
     commands.spawn(Grid::new(50.0));
-
-    commands.spawn(ActiveHouseParts { parts: vec![] });
 
     commands.spawn(Inventory {
         items: HashMap::from([(InventoryObject::Wood, 20), (InventoryObject::Rocks, 20)]),
@@ -342,127 +272,6 @@ fn move_camera(
         .lerp(new_camera_pos, 0.2);
 }
 
-fn build_house(
-    mut commands: Commands,
-    mut house_parts_query: Query<&mut ActiveHouseParts>,
-    grid_query: Query<&Grid>,
-) {
-    let mut build = false;
-    for (house_part, (_x, _y)) in house_parts_query.single().parts.iter() {
-        if *house_part == House::Door {
-            build = true;
-        }
-    }
-    if build {
-        let vec1 = grid_query
-            .single()
-            .grid_to_world(house_parts_query.single().get_most_southwest_corner1());
-        let vec2 = grid_query
-            .single()
-            .grid_to_world(house_parts_query.single().get_most_northeast_corner3());
-
-        let shape = shapes::Polygon {
-            points: vec![
-                vec1 + Vec2::new(-25.0, -25.0),
-                Vec2::new(vec2.x, vec1.y) + Vec2::new(25.0, -25.0),
-                Vec2::new(vec1.x + ((vec2.x - vec1.x) / 2.0), vec1.y + 100.0),
-            ],
-            closed: true,
-        };
-
-        let entity1 = commands
-            .spawn((
-                ShapeBundle {
-                    path: GeometryBuilder::build_as(&shape),
-                    ..default()
-                },
-                Fill::color(Color::rgb(0.6, 0.3, 0.0).into()),
-                Stroke::new(Color::rgb(0.3, 0.15, 0.0).into(), 2.0),
-            ))
-            .id();
-
-        let shape2 = shapes::Polygon {
-            points: vec![
-                vec1 + Vec2::new(-25.0, -25.0),
-                Vec2::new(vec1.x + ((vec2.x - vec1.x) / 2.0), vec1.y + 100.0),
-                Vec2::new(vec1.x + ((vec2.x - vec1.x) / 2.0), vec2.y + 150.0),
-                Vec2::new(vec1.x, vec2.y) + Vec2::new(-25.0, 25.0),
-            ],
-            closed: true,
-        };
-
-        let entity2 = commands
-            .spawn((
-                ShapeBundle {
-                    path: GeometryBuilder::build_as(&shape2),
-                    ..default()
-                },
-                Fill::color(Color::rgb(0.6, 0.3, 0.0).into()),
-                Stroke::new(Color::rgb(0.3, 0.15, 0.0).into(), 2.0),
-            ))
-            .id();
-
-        let shape3 = shapes::Polygon {
-            points: vec![
-                Vec2::new(vec2.x, vec1.y) + Vec2::new(25.0, -25.0),
-                Vec2::new(vec1.x + ((vec2.x - vec1.x) / 2.0), vec1.y + 100.0),
-                Vec2::new(vec1.x + ((vec2.x - vec1.x) / 2.0), vec2.y + 150.0),
-                Vec2::new(vec2.x, vec2.y) + Vec2::new(25.0, 25.0),
-            ],
-            closed: true,
-        };
-
-        let entity3 = commands
-            .spawn((
-                ShapeBundle {
-                    path: GeometryBuilder::build_as(&shape3),
-                    ..default()
-                },
-                Fill::color(Color::rgb(0.6, 0.3, 0.0).into()),
-                Stroke::new(Color::rgb(0.3, 0.15, 0.0).into(), 2.0),
-            ))
-            .id();
-
-        commands.spawn(HouseParts {
-            parts: house_parts_query.single().parts.clone(),
-            roof_entities: vec![entity1, entity2, entity3],
-        });
-        house_parts_query.single_mut().parts.clear();
-    }
-}
-
-fn hide_roof(
-    house_parts_query: Query<&HouseParts>,
-    grid_query: Query<&Grid>,
-    mut path_query: Query<(&mut Visibility, Entity), With<Path>>,
-    rapier_context: Res<RapierContext>,    
-) {
-    for HouseParts{parts, roof_entities} in house_parts_query.iter() {
-        for (house_part, pos) in parts {
-            if *house_part == House::Door {
-                let shape = Collider::cuboid(1.0, 2.0);
-                let shape_pos = grid_query.single().grid_to_world(*pos);
-                let shape_rot = 0.0;
-                let shape_vel = Vec2::new(0.1, 0.1);
-                let max_toi = 0.0;
-                let filter = QueryFilter::default();
-
-                if let Some((_entity, _hit)) =
-                    rapier_context.cast_shape(shape_pos, shape_rot, shape_vel, &shape, max_toi, filter)
-                {
-                    for (mut visibility, entity) in path_query.iter_mut() {
-                        for roof_entity in roof_entities {
-                            if entity == *roof_entity {
-                                *visibility = Visibility::Hidden;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn drop_house_parts(
     mut commands: Commands,
     mouse: Res<Input<MouseButton>>,
@@ -472,8 +281,6 @@ fn drop_house_parts(
     sprite_query: Query<&Sprite>,
     mut inv_query: Query<&mut Inventory>,
     button_query: Query<&House>,
-    mut house_parts_query: Query<&mut ActiveHouseParts>,
-    grid_query: Query<&Grid>,
 ) {
     if sprite_query.contains(cursor.single().0) {
         if mouse.just_pressed(MouseButton::Left) {
@@ -485,13 +292,6 @@ fn drop_house_parts(
                     && *house_part == House::Corner1
                     && inv_query.single().recipe_satisfied(Recipe(House::Corner1))
                 {
-                    let (x, y) = grid_query
-                        .single()
-                        .world_to_grid(cursor.single().1.translation.truncate());
-                    house_parts_query
-                        .single_mut()
-                        .parts
-                        .push((House::Corner1, (x - 1, y)));
                     let texture = asset_server.load("corner1.png");
 
                     commands.spawn((
@@ -526,12 +326,6 @@ fn drop_house_parts(
                     && *house_part == House::Corner2
                     && inv_query.single().recipe_satisfied(Recipe(House::Corner2))
                 {
-                    house_parts_query.single_mut().parts.push((
-                        House::Corner2,
-                        grid_query
-                            .single()
-                            .world_to_grid(cursor.single().1.translation.truncate()),
-                    ));
                     let texture = asset_server.load("corner2.png");
 
                     commands.spawn((
@@ -566,13 +360,6 @@ fn drop_house_parts(
                     && *house_part == House::Corner3
                     && inv_query.single().recipe_satisfied(Recipe(House::Corner3))
                 {
-                    let (x, y) = grid_query
-                        .single()
-                        .world_to_grid(cursor.single().1.translation.truncate());
-                    house_parts_query
-                        .single_mut()
-                        .parts
-                        .push((House::Corner3, (x + 1, y + 2)));
                     let texture = asset_server.load("corner3.png");
 
                     commands.spawn((
@@ -607,12 +394,6 @@ fn drop_house_parts(
                     && *house_part == House::Corner4
                     && inv_query.single().recipe_satisfied(Recipe(House::Corner4))
                 {
-                    house_parts_query.single_mut().parts.push((
-                        House::Corner4,
-                        grid_query
-                            .single()
-                            .world_to_grid(cursor.single().1.translation.truncate()),
-                    ));
                     let texture = asset_server.load("corner4.png");
 
                     commands.spawn((
@@ -647,12 +428,6 @@ fn drop_house_parts(
                     && *house_part == House::Wall1
                     && inv_query.single().recipe_satisfied(Recipe(House::Wall1))
                 {
-                    house_parts_query.single_mut().parts.push((
-                        House::Wall1,
-                        grid_query
-                            .single()
-                            .world_to_grid(cursor.single().1.translation.truncate()),
-                    ));
                     let texture = asset_server.load("wall1.png");
                     commands.spawn((
                         SpriteBundle {
@@ -687,12 +462,6 @@ fn drop_house_parts(
                     && *house_part == House::Wall2
                     && inv_query.single().recipe_satisfied(Recipe(House::Wall2))
                 {
-                    house_parts_query.single_mut().parts.push((
-                        House::Wall2,
-                        grid_query
-                            .single()
-                            .world_to_grid(cursor.single().1.translation.truncate()),
-                    ));
                     let texture = asset_server.load("wall2.png");
                     commands.spawn((
                         SpriteBundle {
@@ -727,12 +496,6 @@ fn drop_house_parts(
                     && *house_part == House::Wall3
                     && inv_query.single().recipe_satisfied(Recipe(House::Wall3))
                 {
-                    house_parts_query.single_mut().parts.push((
-                        House::Wall3,
-                        grid_query
-                            .single()
-                            .world_to_grid(cursor.single().1.translation.truncate()),
-                    ));
                     let texture = asset_server.load("wall3.png");
                     commands.spawn((
                         SpriteBundle {
@@ -767,12 +530,6 @@ fn drop_house_parts(
                     && *house_part == House::Door
                     && inv_query.single().recipe_satisfied(Recipe(House::Door))
                 {
-                    house_parts_query.single_mut().parts.push((
-                        House::Door,
-                        grid_query
-                            .single()
-                            .world_to_grid(cursor.single().1.translation.truncate()),
-                    ));
                     let texture = asset_server.load("door.png");
                     commands.spawn((
                         SpriteBundle {
