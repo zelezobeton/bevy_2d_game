@@ -1,10 +1,10 @@
 /*
 TODO:
 - Make store
-- Build houses wall by wall and walkable
 - Grow plants
 
 DONE:
+- Build houses wall by wall and walkable
 - Add buildable cottage
 - Make UI
 - Break down rocks
@@ -22,10 +22,12 @@ use rand::Rng;
 use bevy::{prelude::*, window::PrimaryWindow};
 use bevy_rapier2d::prelude::*;
 
+mod menu_ui;
 mod player;
-mod ui;
+mod hud_ui;
+mod store_ui;
 use player::{AnimationIndices, Movement, Player};
-use ui::{House, OnCursor};
+use hud_ui::{House, OnCursor};
 
 #[derive(Component)]
 pub struct Grid {
@@ -110,6 +112,8 @@ enum WorldObject {
 enum InventoryObject {
     Wood,
     Rocks,
+    Beans,
+    PotatoSeeds
 }
 
 #[derive(Component, PartialEq, Eq, Hash, Debug, Clone, Copy)]
@@ -127,11 +131,26 @@ struct Damage {
 }
 
 #[derive(Component)]
-struct YSort;
+struct YSort(f32);
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
+enum AppState {
+    #[default]
+    Menu,
+    InGame,
+    Store
+}
+
+#[derive(Component)]
+struct StoreCoins {
+    coins: i32,
+    costs: HashMap<InventoryObject, i32>
+}
 
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.0, 0.5, 0.0)))
+        .add_state::<AppState>()
         .add_plugins((
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())
@@ -148,10 +167,15 @@ fn main() {
             RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0),
             RapierDebugRenderPlugin::default(),
             player::PlayerPlugin,
-            ui::UiPlugin,
+            hud_ui::UiPlugin,
+            menu_ui::MenuUiPlugin,
+            store_ui::StoreUiPlugin,
         ))
         .add_systems(Startup, setup)
-        .add_systems(PostStartup, (spawn_trees, spawn_rocks, spawn_grass))
+        .add_systems(
+            PostStartup,
+            (spawn_trees, spawn_rocks, spawn_grass),
+        )
         .add_systems(
             Update,
             (
@@ -161,7 +185,8 @@ fn main() {
                 move_cursor,
                 drop_house_parts,
                 y_sort,
-            ),
+            )
+                .run_if(in_state(AppState::InGame)),
         )
         .run();
 }
@@ -207,6 +232,11 @@ fn setup(mut commands: Commands) {
         ]),
     });
 
+    commands.spawn(StoreCoins {
+        coins: 100,
+        costs: HashMap::from([(InventoryObject::Beans, 20), (InventoryObject::PotatoSeeds, 10)]),
+    });
+
     // Setup cursor
     commands
         .spawn(SceneBundle {
@@ -228,8 +258,10 @@ fn setup(mut commands: Commands) {
 }
 
 fn y_sort(mut query: Query<(&mut Transform, &YSort)>) {
-    for (mut transform, _) in query.iter_mut() {
-        transform.translation.z = -(1.0 / (1.0 + (2.0f32.powf(-0.01 * transform.translation.y))));
+    for (mut transform, ysort) in query.iter_mut() {
+        // Might need to keep an eye on this, it can't grow smaller than -1000
+        transform.translation.z = 0.001 * (-transform.translation.y + (ysort.0 / 2.0));
+        println!("{}", transform.translation.z)
     }
 }
 
@@ -304,7 +336,7 @@ fn drop_house_parts(
                             (Vect::new(-50.0, -25.0), 0.0, Collider::cuboid(25.0, 50.0)),
                             (Vect::new(0.0, -100.0), 0.0, Collider::cuboid(75.0, 25.0)),
                         ]),
-                        YSort,
+                        YSort(250.0),
                     ));
 
                     inv_query
@@ -338,7 +370,7 @@ fn drop_house_parts(
                             (Vect::new(-50.0, -75.0), 0.0, Collider::cuboid(25.0, 50.0)),
                             (Vect::new(0.0, 0.0), 0.0, Collider::cuboid(75.0, 25.0)),
                         ]),
-                        YSort,
+                        YSort(0.0),
                     ));
 
                     inv_query
@@ -372,7 +404,7 @@ fn drop_house_parts(
                             (Vect::new(50.0, -75.0), 0.0, Collider::cuboid(25.0, 50.0)),
                             (Vect::new(0.0, 0.0), 0.0, Collider::cuboid(75.0, 25.0)),
                         ]),
-                        YSort,
+                        YSort(0.0),
                     ));
 
                     inv_query
@@ -406,7 +438,7 @@ fn drop_house_parts(
                             (Vect::new(50.0, -25.0), 0.0, Collider::cuboid(25.0, 50.0)),
                             (Vect::new(0.0, -100.0), 0.0, Collider::cuboid(75.0, 25.0)),
                         ]),
-                        YSort,
+                        YSort(250.0),
                     ));
 
                     inv_query
@@ -440,7 +472,7 @@ fn drop_house_parts(
                             0.0,
                             Collider::cuboid(25.0, 75.0),
                         )]),
-                        YSort,
+                        YSort(0.0),
                     ));
 
                     inv_query
@@ -474,7 +506,7 @@ fn drop_house_parts(
                             0.0,
                             Collider::cuboid(75.0, 25.0),
                         )]),
-                        YSort,
+                        YSort(0.0),
                     ));
 
                     inv_query
@@ -508,7 +540,7 @@ fn drop_house_parts(
                             0.0,
                             Collider::cuboid(25.0, 25.0),
                         )]),
-                        YSort,
+                        YSort(0.0),
                     ));
 
                     inv_query
@@ -537,7 +569,7 @@ fn drop_house_parts(
                             texture,
                             ..default()
                         },
-                        YSort,
+                        YSort(0.0),
                     ));
 
                     inv_query
@@ -771,7 +803,7 @@ fn spawn_trees(
                 .unwrap(),
                 WorldObject::Tree,
                 Damage { value: 3 },
-                YSort,
+                YSort(0.0),
             ));
             trees_num += 1
         } else {
@@ -819,7 +851,7 @@ fn spawn_rocks(
                 .unwrap(),
                 WorldObject::Rock,
                 Damage { value: 2 },
-                YSort,
+                YSort(0.0),
             ));
             rocks_num += 1
         } else {
@@ -854,7 +886,7 @@ fn spawn_grass(
                     transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
                     ..default()
                 },
-                YSort,
+                YSort(0.0),
             ));
             grass_num += 1
         } else {

@@ -1,3 +1,5 @@
+use crate::AppState;
+
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
 
@@ -29,7 +31,10 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PostStartup, setup_player)
-            .add_systems(Update, (character_movement, animate_sprite));
+            .add_systems(
+                Update,
+                (character_movement, animate_sprite).run_if(in_state(AppState::InGame)),
+            );
     }
 }
 
@@ -59,9 +64,15 @@ fn setup_player(
         AnimationTimer(Timer::from_seconds(0.3, TimerMode::Repeating)),
         KinematicCharacterController::default(),
         RigidBody::KinematicVelocityBased,
-        Collider::convex_hull(&[Vect::new(-10.0, -50.0), Vect::new(10.0, -50.0), Vect::new(-10.0, 0.0), Vect::new(10.0, 0.0)],).unwrap(),
+        Collider::convex_hull(&[
+            Vect::new(-10.0, -50.0),
+            Vect::new(10.0, -50.0),
+            Vect::new(-10.0, 0.0),
+            Vect::new(10.0, 0.0),
+        ])
+        .unwrap(),
         Movement::None,
-        YSort
+        YSort(0.0),
     ));
 }
 
@@ -101,56 +112,49 @@ fn character_movement(
             *sprite = TextureAtlasSprite::new(8);
         }
         *movement = Movement::Right;
-    }
-    else if x == 0.0 && y == 1.0 {
+    } else if x == 0.0 && y == 1.0 {
         if *movement != Movement::Up {
             anim_indices.first = 4;
             anim_indices.last = 5;
             *sprite = TextureAtlasSprite::new(4);
         }
         *movement = Movement::Up;
-    }
-    else if x == 0.0 && y == -1.0 {
+    } else if x == 0.0 && y == -1.0 {
         if *movement != Movement::Down {
             anim_indices.first = 0;
             anim_indices.last = 1;
             *sprite = TextureAtlasSprite::new(0);
         }
         *movement = Movement::Down;
-    }
-    else if x == -1.0 && y == 0.0 {
+    } else if x == -1.0 && y == 0.0 {
         if *movement != Movement::Left {
             anim_indices.first = 12;
             anim_indices.last = 15;
             *sprite = TextureAtlasSprite::new(12)
         }
         *movement = Movement::Left;
-    }
-    else if x == 1.0 && y == 1.0 {
+    } else if x == 1.0 && y == 1.0 {
         if *movement != Movement::Up {
             anim_indices.first = 4;
             anim_indices.last = 5;
             *sprite = TextureAtlasSprite::new(4);
         }
         *movement = Movement::Up;
-    }
-    else if x == 1.0 && y == -1.0 {
+    } else if x == 1.0 && y == -1.0 {
         if *movement != Movement::Down {
             anim_indices.first = 0;
             anim_indices.last = 1;
             *sprite = TextureAtlasSprite::new(0);
         }
         *movement = Movement::Down;
-    }
-    else if x == -1.0 && y == 1.0 {
+    } else if x == -1.0 && y == 1.0 {
         if *movement != Movement::Up {
             anim_indices.first = 4;
             anim_indices.last = 5;
             *sprite = TextureAtlasSprite::new(4);
         }
         *movement = Movement::Up;
-    }
-    else if x == -1.0 && y == -1.0 {
+    } else if x == -1.0 && y == -1.0 {
         if *movement != Movement::Down {
             anim_indices.first = 0;
             anim_indices.last = 1;
@@ -181,7 +185,7 @@ fn character_movement(
                 anim_indices.last = 9;
                 *sprite = TextureAtlasSprite::new(9)
             }
-            Movement::Working => { }
+            Movement::Working => {}
             Movement::None => {
                 anim_indices.first = 2;
                 anim_indices.last = 2;
@@ -191,7 +195,10 @@ fn character_movement(
     } else {
         const SPEED: f32 = 150.0;
         let v2_norm = Vec2::new(x, y).normalize();
-        controller.translation = Some(Vec2::new(v2_norm.x * SPEED * time.delta_seconds(), v2_norm.y * SPEED * time.delta_seconds()))
+        controller.translation = Some(Vec2::new(
+            v2_norm.x * SPEED * time.delta_seconds(),
+            v2_norm.y * SPEED * time.delta_seconds(),
+        ))
     }
 }
 

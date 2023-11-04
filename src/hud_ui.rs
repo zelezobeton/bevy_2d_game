@@ -1,4 +1,6 @@
-use crate::{Cursor, Inventory, InventoryObject, Recipe, Tool};
+use crate::AppState;
+
+use crate::{Cursor, Inventory, InventoryObject, Recipe, Tool, menu_ui::{NORMAL_BUTTON, HOVERED_BUTTON, PRESSED_BUTTON}};
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -12,6 +14,12 @@ pub struct AxeButton;
 
 #[derive(Component)]
 pub struct PickaxeButton;
+
+#[derive(Component)]
+pub struct StoreButton;
+
+#[derive(Component)]
+pub struct Hud;
 
 #[derive(Component, PartialEq, Eq, Hash, Debug, Clone)]
 pub enum House {
@@ -31,17 +39,21 @@ pub struct OnCursor(pub House);
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostStartup, setup_ui).add_systems(
-            Update,
-            (
-                update_wood_text,
-                update_rocks_text,
-                interact_with_axe_button,
-                interact_with_pickaxe_button,
-                color_house_button,
-                interact_with_house_button,
-            ),
-        );
+        app.add_systems(OnEnter(AppState::InGame), spawn_hud_ui)
+            .add_systems(
+                Update,
+                (
+                    update_wood_text,
+                    update_rocks_text,
+                    interact_with_axe_button,
+                    interact_with_pickaxe_button,
+                    color_house_button,
+                    interact_with_house_button,
+                    interact_with_shop_button
+                )
+                    .run_if(in_state(AppState::InGame)),
+            )
+            .add_systems(OnExit(AppState::InGame), despawn_hud_ui);
     }
 }
 
@@ -223,7 +235,6 @@ fn interact_with_house_button(
                                 ..default()
                             })
                             .insert(OnCursor(House::Wall2));
-
                     }
                 }
                 House::Wall3 => {
@@ -341,7 +352,34 @@ pub fn interact_with_pickaxe_button(
     }
 }
 
-fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn interact_with_shop_button(
+    mut next_state: ResMut<NextState<AppState>>,
+    mut interaction_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<StoreButton>),
+    >,
+) {
+    for (interaction, mut color) in &mut interaction_query {
+        match *interaction {
+            Interaction::Pressed => {
+                *color = PRESSED_BUTTON.into();
+                next_state.set(AppState::Store);
+            }
+            Interaction::Hovered => {
+                *color = HOVERED_BUTTON.into();
+            }
+            Interaction::None => {
+                *color = NORMAL_BUTTON.into();
+            }
+        }
+    }
+}
+
+fn despawn_hud_ui(mut commands: Commands, query: Query<Entity, With<Hud>>) {
+    commands.entity(query.single()).despawn_recursive();
+}
+
+fn spawn_hud_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn(NodeBundle {
             style: Style {
@@ -352,6 +390,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             },
             ..default()
         })
+        .insert(Hud)
         // Left column
         .with_children(|parent| {
             parent
@@ -483,6 +522,39 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         ),
                         RocksText,
                     ));
+                })
+                // Store button
+                .with_children(|parent| {
+                    parent.spawn(
+                        NodeBundle {
+                            style: Style {
+                                left: Val::Px(20.0),
+                                ..default()
+                            },
+                            background_color: Color::WHITE.into(),
+                            ..default()
+                        }
+                    )
+                    .with_children(|parent| {
+                        parent
+                            .spawn((
+                                ButtonBundle {
+                                    background_color: Color::BLACK.into(),
+                                    ..default()
+                                },
+                                StoreButton,
+                            ))
+                            .with_children(|parent| {
+                                parent.spawn(TextBundle::from_section(
+                                    "Store",
+                                    TextStyle {
+                                        font_size: 30.0,
+                                        color: Color::rgb(0.9, 0.9, 0.9),
+                                        ..default()
+                                    },
+                                ));
+                            });
+                    });
                 });
         })
         // Right column
