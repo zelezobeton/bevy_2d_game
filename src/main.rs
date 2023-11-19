@@ -22,12 +22,12 @@ use rand::Rng;
 use bevy::{prelude::*, window::PrimaryWindow};
 use bevy_rapier2d::prelude::*;
 
+mod hud_ui;
 mod menu_ui;
 mod player;
-mod hud_ui;
 mod store_ui;
-use player::{AnimationIndices, Movement, Player};
 use hud_ui::{House, OnCursor};
+use player::{AnimationIndices, Movement, Player};
 
 #[derive(Component)]
 pub struct Grid {
@@ -80,15 +80,16 @@ impl Grid {
 
 #[derive(Component)]
 pub struct Inventory {
-    items: HashMap<InventoryObject, i32>,
-    tools: HashMap<Tool, bool>,
+    coins: i32,
+    items: HashMap<InventoryObject, (bool, i32)>,
     recipes: HashMap<Recipe, Vec<(InventoryObject, i32)>>,
+    costs: HashMap<InventoryObject, i32>,
 }
 
 impl Inventory {
     fn recipe_satisfied(&self, recipe: Recipe) -> bool {
         for (inventory_object, count) in &self.recipes[&recipe] {
-            if &self.items[&inventory_object] >= count {
+            if &self.items[&inventory_object].1 >= count {
                 return true;
             }
         }
@@ -110,16 +111,12 @@ enum WorldObject {
 
 #[derive(Component, PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum InventoryObject {
+    Axe,
+    Pickaxe,
     Wood,
     Rocks,
     Beans,
-    PotatoSeeds
-}
-
-#[derive(Component, PartialEq, Eq, Hash, Debug, Clone, Copy)]
-enum Tool {
-    Axe,
-    Pickaxe,
+    PotatoSeeds,
 }
 
 #[derive(Component, PartialEq, Eq, Hash, Debug, Clone)]
@@ -138,13 +135,7 @@ enum AppState {
     #[default]
     Menu,
     InGame,
-    Store
-}
-
-#[derive(Component)]
-struct StoreCoins {
-    coins: i32,
-    costs: HashMap<InventoryObject, i32>
+    Store,
 }
 
 fn main() {
@@ -167,15 +158,12 @@ fn main() {
             RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0),
             RapierDebugRenderPlugin::default(),
             player::PlayerPlugin,
-            hud_ui::UiPlugin,
+            hud_ui::HudUiPlugin,
             menu_ui::MenuUiPlugin,
             store_ui::StoreUiPlugin,
         ))
         .add_systems(Startup, setup)
-        .add_systems(
-            PostStartup,
-            (spawn_trees, spawn_rocks, spawn_grass),
-        )
+        .add_systems(PostStartup, (spawn_trees, spawn_rocks, spawn_grass))
         .add_systems(
             Update,
             (
@@ -197,8 +185,15 @@ fn setup(mut commands: Commands) {
     commands.spawn(Grid::new(50.0));
 
     commands.spawn(Inventory {
-        items: HashMap::from([(InventoryObject::Wood, 20), (InventoryObject::Rocks, 20)]),
-        tools: HashMap::from([(Tool::Axe, false), (Tool::Pickaxe, false)]),
+        coins: 100,
+        items: HashMap::from([
+            (InventoryObject::Axe, (false, 1)),
+            (InventoryObject::Pickaxe, (false, 1)),
+            (InventoryObject::Wood, (false, 20)),
+            (InventoryObject::Rocks, (false, 20)),
+            (InventoryObject::Beans, (false, 0)),
+            (InventoryObject::PotatoSeeds, (false, 0)),
+        ]),
         recipes: HashMap::from([
             (
                 Recipe(House::Corner1),
@@ -230,11 +225,10 @@ fn setup(mut commands: Commands) {
             ),
             (Recipe(House::Door), vec![(InventoryObject::Wood, 1)]),
         ]),
-    });
-
-    commands.spawn(StoreCoins {
-        coins: 100,
-        costs: HashMap::from([(InventoryObject::Beans, 20), (InventoryObject::PotatoSeeds, 10)]),
+        costs: HashMap::from([
+            (InventoryObject::Beans, 20),
+            (InventoryObject::PotatoSeeds, 10),
+        ]),
     });
 
     // Setup cursor
@@ -261,7 +255,6 @@ fn y_sort(mut query: Query<(&mut Transform, &YSort)>) {
     for (mut transform, ysort) in query.iter_mut() {
         // Might need to keep an eye on this, it can't grow smaller than -1000
         transform.translation.z = 0.001 * (-transform.translation.y + (ysort.0 / 2.0));
-        println!("{}", transform.translation.z)
     }
 }
 
@@ -343,13 +336,13 @@ fn drop_house_parts(
                         .single_mut()
                         .items
                         .entry(InventoryObject::Rocks)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     inv_query
                         .single_mut()
                         .items
                         .entry(InventoryObject::Wood)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     commands.entity(cursor.single().0).remove::<OnCursor>();
                 }
@@ -377,13 +370,13 @@ fn drop_house_parts(
                         .single_mut()
                         .items
                         .entry(InventoryObject::Rocks)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     inv_query
                         .single_mut()
                         .items
                         .entry(InventoryObject::Wood)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     commands.entity(cursor.single().0).remove::<OnCursor>();
                 }
@@ -411,13 +404,13 @@ fn drop_house_parts(
                         .single_mut()
                         .items
                         .entry(InventoryObject::Rocks)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     inv_query
                         .single_mut()
                         .items
                         .entry(InventoryObject::Wood)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     commands.entity(cursor.single().0).remove::<OnCursor>();
                 }
@@ -445,13 +438,13 @@ fn drop_house_parts(
                         .single_mut()
                         .items
                         .entry(InventoryObject::Rocks)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     inv_query
                         .single_mut()
                         .items
                         .entry(InventoryObject::Wood)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     commands.entity(cursor.single().0).remove::<OnCursor>();
                 }
@@ -479,13 +472,13 @@ fn drop_house_parts(
                         .single_mut()
                         .items
                         .entry(InventoryObject::Rocks)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     inv_query
                         .single_mut()
                         .items
                         .entry(InventoryObject::Wood)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     commands.entity(cursor.single().0).remove::<OnCursor>();
                 }
@@ -513,13 +506,13 @@ fn drop_house_parts(
                         .single_mut()
                         .items
                         .entry(InventoryObject::Rocks)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     inv_query
                         .single_mut()
                         .items
                         .entry(InventoryObject::Wood)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     commands.entity(cursor.single().0).remove::<OnCursor>();
                 }
@@ -547,13 +540,13 @@ fn drop_house_parts(
                         .single_mut()
                         .items
                         .entry(InventoryObject::Rocks)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     inv_query
                         .single_mut()
                         .items
                         .entry(InventoryObject::Wood)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     commands.entity(cursor.single().0).remove::<OnCursor>();
                 }
@@ -576,13 +569,13 @@ fn drop_house_parts(
                         .single_mut()
                         .items
                         .entry(InventoryObject::Rocks)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     inv_query
                         .single_mut()
                         .items
                         .entry(InventoryObject::Wood)
-                        .and_modify(|count| *count -= 1);
+                        .and_modify(|(_, count)| *count -= 1);
 
                     commands.entity(cursor.single().0).remove::<OnCursor>();
                 }
@@ -612,7 +605,7 @@ fn pickup_object(
                 .single_mut()
                 .items
                 .entry(*object)
-                .and_modify(|count| *count += 1);
+                .and_modify(|(_, count)| *count += 1);
             commands.entity(entity).despawn_recursive();
         }
     }
@@ -661,7 +654,7 @@ fn break_object(
                         if distance2 < 80.0 {
                             let (mut anim_indices, mut sprite, mut movement) =
                                 anim_query.single_mut();
-                            if object == &WorldObject::Tree && inv_query.single().tools[&Tool::Axe]
+                            if object == &WorldObject::Tree && inv_query.single().items[&InventoryObject::Axe].0
                             {
                                 damage.value -= 1;
                                 match *movement {
@@ -695,7 +688,7 @@ fn break_object(
                                 *movement = Movement::Working;
                             }
                             if object == &WorldObject::Rock
-                                && inv_query.single().tools[&Tool::Pickaxe]
+                                && inv_query.single().items[&InventoryObject::Pickaxe].0
                             {
                                 damage.value -= 1;
                                 match *movement {
