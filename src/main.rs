@@ -1,9 +1,10 @@
 /*
 TODO:
-- Make store
 - Grow plants
 
 DONE:
+- Make seed buttons clickable
+- Make store
 - Build houses wall by wall and walkable
 - Add buildable cottage
 - Make UI
@@ -16,6 +17,7 @@ DONE:
 - Add colisions
 */
 use std::collections::HashMap;
+use std::time::Instant;
 
 use rand::Rng;
 
@@ -32,7 +34,7 @@ use player::{AnimationIndices, Movement, Player};
 #[derive(Component)]
 pub struct Grid {
     tile_size: f32,
-    placements: Vec<(String, (i32, i32))>,
+    placements: Vec<(Entity, (i32, i32), WorldObject)>,
 }
 
 impl Grid {
@@ -43,14 +45,39 @@ impl Grid {
         }
     }
 
-    fn place_object(&mut self, name: String, pos: Vec2) {
-        self.placements.push((name, self.world_to_grid(pos)));
+    fn remove_object(&mut self, pos: Vec2) {
+        let mut index: Option<usize> = None;
+        for (index2, (_, pos2, _)) in self.placements.iter().enumerate() {
+            if self.world_to_grid(pos) == *pos2 {
+                index = Some(index2);
+            }
+        }
+        match index {
+            Some(idx) => {
+                self.placements.remove(idx);
+            }
+            None => {}
+        }
+    }
+
+    fn get_object(&self, pos: Vec2) -> Option<(Entity, (i32, i32), WorldObject)> {
+        for (entity, pos2, object) in self.placements.iter() {
+            if self.world_to_grid(pos) == *pos2 {
+                return Some((*entity, *pos2, *object));
+            }
+        }
+        return None;
+    }
+
+    fn place_object(&mut self, entity: Entity, pos: Vec2, object: WorldObject) {
+        self.placements
+            .push((entity, self.world_to_grid(pos), object));
     }
 
     fn is_free(&self, pos: Vec2) -> bool {
         let mut result = true;
         for placement in self.placements.iter() {
-            let (_string, tuple) = placement;
+            let (_, tuple, _) = placement;
             if *tuple == self.world_to_grid(pos) {
                 result = false;
                 break;
@@ -88,12 +115,13 @@ pub struct Inventory {
 
 impl Inventory {
     fn recipe_satisfied(&self, recipe: Recipe) -> bool {
+        let mut satisfied = true;
         for (inventory_object, count) in &self.recipes[&recipe] {
-            if &self.items[&inventory_object].1 >= count {
-                return true;
+            if &self.items[&inventory_object].1 < count {
+                satisfied = false;
             }
         }
-        return false;
+        return satisfied;
     }
 }
 
@@ -103,16 +131,21 @@ struct MainCamera;
 #[derive(Component)]
 pub struct Cursor;
 
-#[derive(Component, PartialEq)]
+#[derive(Component, PartialEq, Clone, Copy)]
 enum WorldObject {
     Tree,
     Rock,
+    Grass,
+    Flowerbed,
+    FlowerbedWithPotatoSeeds,
+    FlowerbedWithBeans,
 }
 
 #[derive(Component, PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum InventoryObject {
     Axe,
     Pickaxe,
+    Hoe,
     Wood,
     Rocks,
     Beans,
@@ -123,9 +156,7 @@ enum InventoryObject {
 struct Recipe(House);
 
 #[derive(Component)]
-struct Damage {
-    value: i32,
-}
+struct Damage(i32);
 
 #[derive(Component)]
 struct YSort(f32);
@@ -137,6 +168,9 @@ enum AppState {
     InGame,
     Store,
 }
+
+#[derive(Component)]
+struct GrowStartTime(Instant);
 
 fn main() {
     App::new()
@@ -173,6 +207,9 @@ fn main() {
                 move_cursor,
                 drop_house_parts,
                 y_sort,
+                dig_flowerbed,
+                spread_seed,
+                grow_plants
             )
                 .run_if(in_state(AppState::InGame)),
         )
@@ -189,6 +226,7 @@ fn setup(mut commands: Commands) {
         items: HashMap::from([
             (InventoryObject::Axe, (false, 1)),
             (InventoryObject::Pickaxe, (false, 1)),
+            (InventoryObject::Hoe, (false, 1)),
             (InventoryObject::Wood, (false, 20)),
             (InventoryObject::Rocks, (false, 20)),
             (InventoryObject::Beans, (false, 0)),
@@ -611,6 +649,190 @@ fn pickup_object(
     }
 }
 
+fn grow_plants(mut sprite_query: Query<(&mut Handle<Image>, &GrowStartTime, &WorldObject)>, asset_server: Res<AssetServer>,) {
+    for (mut texture, grow_start_time, object) in sprite_query.iter_mut() {
+        let time = grow_start_time.0.elapsed().as_secs();
+        if time > 10 && time <= 20 {
+            *texture = asset_server.load("sprout.png");
+        }
+        else if time > 20 && time <= 30 {
+            if *object == WorldObject::FlowerbedWithBeans {
+                *texture = asset_server.load("beans_level2.png");
+            }
+            else if *object == WorldObject::FlowerbedWithPotatoSeeds {
+                *texture = asset_server.load("potatoes_level2.png");
+            }
+        }
+        else if time > 30 {
+            if *object == WorldObject::FlowerbedWithBeans {
+                *texture = asset_server.load("beans_level3.png");
+            }
+            else if *object == WorldObject::FlowerbedWithPotatoSeeds {
+                *texture = asset_server.load("potatoes_level3.png");
+            }
+        }
+    }
+}
+
+fn spread_seed(
+    input: Res<Input<KeyCode>>,
+    inv_query: Query<&Inventory>,
+    mut grid_query: Query<&mut Grid>,
+    player_query: Query<&Transform, With<Player>>,
+    mut commands: Commands,
+    mut sprite_query: Query<(Entity, &mut Handle<Image>), With<WorldObject>>,
+    asset_server: Res<AssetServer>,
+) {
+    if input.just_pressed(KeyCode::Space)
+        && (inv_query.single().items[&InventoryObject::Beans].0
+            || inv_query.single().items[&InventoryObject::PotatoSeeds].0)
+    {
+        let mut grid = grid_query.single_mut();
+        let player_vec2 = player_query.single().translation.truncate();
+
+        let object = grid.get_object(player_vec2);
+        match object {
+            Some((entity, _, obj)) => {
+                // Remove flowerbed from grid
+                if obj == WorldObject::Flowerbed {
+                    grid.remove_object(player_vec2);
+                }
+
+                for (entity2, mut texture) in sprite_query.iter_mut() {
+                    if entity == entity2 {
+                        *texture = asset_server.load("flowerbed_with_seeds.png");
+                        let now = Instant::now();
+
+                        if inv_query.single().items[&InventoryObject::Beans].0 {
+                            grid.place_object(entity, player_vec2, WorldObject::FlowerbedWithBeans);
+                            commands.entity(entity).insert((WorldObject::FlowerbedWithBeans, GrowStartTime(now)));
+                        }
+
+                        if inv_query.single().items[&InventoryObject::PotatoSeeds].0 {
+                            grid.place_object(entity, player_vec2, WorldObject::FlowerbedWithPotatoSeeds);
+                            commands.entity(entity).insert((WorldObject::FlowerbedWithPotatoSeeds, GrowStartTime(now)));
+                        }
+                    }
+                }
+            }
+            None => {}
+        }
+    }
+}
+
+fn spawn_flowerbed(pos: Vec3, commands: &mut Commands, asset_server: &Res<AssetServer>) -> Entity {
+    let texture = asset_server.load("flowerbed.png");
+    commands
+        .spawn((
+            SpriteBundle {
+                sprite: Sprite {
+                    custom_size: Some(Vec2::new(50.0, 50.0)),
+                    ..default()
+                },
+                texture,
+                transform: Transform {
+                    translation: pos,
+                    ..default()
+                },
+                ..default()
+            },
+            WorldObject::Flowerbed,
+            YSort(-250.0),
+        ))
+        .id()
+}
+
+fn dig_flowerbed(
+    input: Res<Input<KeyCode>>,
+    inv_query: Query<&Inventory>,
+    mut grid_query: Query<&mut Grid>,
+    player_query: Query<&Transform, With<Player>>,
+    mut anim_query: Query<
+        (
+            &mut AnimationIndices,
+            &mut TextureAtlasSprite,
+            &mut Movement,
+        ),
+        With<Player>,
+    >,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+) {
+    if input.just_pressed(KeyCode::Space) && inv_query.single().items[&InventoryObject::Hoe].0 {
+        let mut grid = grid_query.single_mut();
+        let player_vec2 = player_query.single().translation.truncate();
+
+        // Remove grass
+        let object = grid.get_object(player_vec2);
+        match object {
+            Some((entity, _, obj)) => {
+                if obj == WorldObject::Grass {
+                    commands.entity(entity).despawn();
+                    grid.remove_object(player_vec2);
+                    return;
+                }
+            }
+            None => {}
+        }
+
+        let pos = grid.world_to_grid(player_vec2);
+        let (mut anim_indices, mut sprite, mut movement) = anim_query.single_mut();
+        match *movement {
+            Movement::Up => {
+                anim_indices.first = 19;
+                anim_indices.last = 19;
+                *sprite = TextureAtlasSprite::new(19);
+
+                let pos2 = grid.grid_to_world(pos);
+                if grid.is_free(pos2) {
+                    let id = spawn_flowerbed(pos2.extend(0.0), &mut commands, &asset_server);
+                    grid.place_object(id, pos2, WorldObject::Flowerbed);
+                }
+            }
+            Movement::Down => {
+                anim_indices.first = 24;
+                anim_indices.last = 24;
+                *sprite = TextureAtlasSprite::new(24);
+
+                let pos2 = grid.grid_to_world(pos);
+                if grid.is_free(pos2) {
+                    let id = spawn_flowerbed(pos2.extend(0.0), &mut commands, &asset_server);
+                    grid.place_object(id, pos2, WorldObject::Flowerbed);
+                }
+            }
+            Movement::Left => {
+                anim_indices.first = 25;
+                anim_indices.last = 25;
+                *sprite = TextureAtlasSprite::new(25);
+
+                let pos2 = grid.grid_to_world(pos);
+                if grid.is_free(pos2) {
+                    let id = spawn_flowerbed(pos2.extend(0.0), &mut commands, &asset_server);
+                    grid.place_object(id, pos2, WorldObject::Flowerbed);
+                }
+            }
+            Movement::Right => {
+                anim_indices.first = 26;
+                anim_indices.last = 26;
+                *sprite = TextureAtlasSprite::new(26);
+
+                let pos2 = grid.grid_to_world(pos);
+                if grid.is_free(pos2) {
+                    let id = spawn_flowerbed(pos2.extend(0.0), &mut commands, &asset_server);
+                    grid.place_object(id, pos2, WorldObject::Flowerbed);
+                }
+            }
+            Movement::Working => {}
+            Movement::None => {
+                anim_indices.first = 24;
+                anim_indices.last = 24;
+                *sprite = TextureAtlasSprite::new(24);
+            }
+        }
+        *movement = Movement::Working;
+    }
+}
+
 fn break_object(
     player_query: Query<&Transform, With<Player>>,
     mut object_query: Query<(Entity, &Transform, &mut Damage, &WorldObject)>,
@@ -626,8 +848,12 @@ fn break_object(
         ),
         With<Player>,
     >,
+    mut grid_query: Query<&mut Grid>,
 ) {
-    if input.just_pressed(KeyCode::Space) {
+    if input.just_pressed(KeyCode::Space)
+        && (inv_query.single().items[&InventoryObject::Axe].0
+            || inv_query.single().items[&InventoryObject::Pickaxe].0)
+    {
         // Find nearest object
         let player = player_query.single();
         let mut nearest_entity: Option<(Entity, f32)> = None;
@@ -654,9 +880,10 @@ fn break_object(
                         if distance2 < 80.0 {
                             let (mut anim_indices, mut sprite, mut movement) =
                                 anim_query.single_mut();
-                            if object == &WorldObject::Tree && inv_query.single().items[&InventoryObject::Axe].0
+                            if object == &WorldObject::Tree
+                                && inv_query.single().items[&InventoryObject::Axe].0
                             {
-                                damage.value -= 1;
+                                damage.0 -= 1;
                                 match *movement {
                                     Movement::Up => {
                                         anim_indices.first = 19;
@@ -690,7 +917,7 @@ fn break_object(
                             if object == &WorldObject::Rock
                                 && inv_query.single().items[&InventoryObject::Pickaxe].0
                             {
-                                damage.value -= 1;
+                                damage.0 -= 1;
                                 match *movement {
                                     Movement::Up => {
                                         anim_indices.first = 19;
@@ -723,8 +950,11 @@ fn break_object(
                             }
                         }
 
-                        if damage.value == 0 {
+                        if damage.0 == 0 {
                             commands.entity(entity).despawn_recursive();
+                            grid_query
+                                .single_mut()
+                                .remove_object(transform.translation.truncate());
 
                             // Spawn wood
                             if *object == WorldObject::Tree {
@@ -779,25 +1009,27 @@ fn spawn_trees(
         let mut grid = grid_query.single_mut();
         if grid.is_free(vec) {
             let vec2 = grid.grid_to_world(grid.world_to_grid(vec));
-            grid.place_object("tree".to_string(), vec);
             let texture = asset_server.load("tree.png");
-            commands.spawn((
-                SpriteBundle {
-                    texture,
-                    transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
-                    ..default()
-                },
-                Collider::convex_hull(&[
-                    Vect::new(-20.0, -40.0),
-                    Vect::new(20.0, -40.0),
-                    Vect::new(-20.0, 0.0),
-                    Vect::new(20.0, 0.0),
-                ])
-                .unwrap(),
-                WorldObject::Tree,
-                Damage { value: 3 },
-                YSort(0.0),
-            ));
+            let id = commands
+                .spawn((
+                    SpriteBundle {
+                        texture,
+                        transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
+                        ..default()
+                    },
+                    Collider::convex_hull(&[
+                        Vect::new(-20.0, -40.0),
+                        Vect::new(20.0, -40.0),
+                        Vect::new(-20.0, 0.0),
+                        Vect::new(20.0, 0.0),
+                    ])
+                    .unwrap(),
+                    WorldObject::Tree,
+                    Damage(3),
+                    YSort(0.0),
+                ))
+                .id();
+            grid.place_object(id, vec, WorldObject::Tree);
             trees_num += 1
         } else {
             continue;
@@ -827,25 +1059,27 @@ fn spawn_rocks(
         let mut grid = grid_query.single_mut();
         if grid.is_free(vec) {
             let vec2 = grid.grid_to_world(grid.world_to_grid(vec));
-            grid.place_object("rock".to_string(), vec);
             let texture = asset_server.load("rock.png");
-            commands.spawn((
-                SpriteBundle {
-                    texture,
-                    transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
-                    ..default()
-                },
-                Collider::convex_hull(&[
-                    Vect::new(-20.0, -20.0),
-                    Vect::new(20.0, -20.0),
-                    Vect::new(-20.0, 0.0),
-                    Vect::new(20.0, 0.0),
-                ])
-                .unwrap(),
-                WorldObject::Rock,
-                Damage { value: 2 },
-                YSort(0.0),
-            ));
+            let id = commands
+                .spawn((
+                    SpriteBundle {
+                        texture,
+                        transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
+                        ..default()
+                    },
+                    Collider::convex_hull(&[
+                        Vect::new(-20.0, -20.0),
+                        Vect::new(20.0, -20.0),
+                        Vect::new(-20.0, 0.0),
+                        Vect::new(20.0, 0.0),
+                    ])
+                    .unwrap(),
+                    WorldObject::Rock,
+                    Damage(2),
+                    YSort(0.0),
+                ))
+                .id();
+            grid.place_object(id, vec, WorldObject::Rock);
             rocks_num += 1
         } else {
             continue;
@@ -871,16 +1105,19 @@ fn spawn_grass(
         let mut grid = grid_query.single_mut();
         if grid.is_free(vec) {
             let vec2 = grid.grid_to_world(grid.world_to_grid(vec));
-            grid.place_object("grass".to_string(), vec);
             let texture = asset_server.load("grass.png");
-            commands.spawn((
-                SpriteBundle {
-                    texture,
-                    transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
-                    ..default()
-                },
-                YSort(0.0),
-            ));
+            let id = commands
+                .spawn((
+                    SpriteBundle {
+                        texture,
+                        transform: Transform::from_xyz(vec2.x, vec2.y, 0.0),
+                        ..default()
+                    },
+                    WorldObject::Grass,
+                    YSort(0.0),
+                ))
+                .id();
+            grid.place_object(id, vec, WorldObject::Grass);
             grass_num += 1
         } else {
             continue;

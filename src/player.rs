@@ -3,7 +3,7 @@ use crate::AppState;
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
 
-use crate::{Grid, YSort};
+use crate::YSort;
 
 #[derive(Component)]
 pub struct Player;
@@ -30,11 +30,10 @@ pub enum Movement {
 pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostStartup, setup_player)
-            .add_systems(
-                Update,
-                (character_movement, animate_sprite).run_if(in_state(AppState::InGame)),
-            );
+        app.add_systems(PostStartup, setup_player).add_systems(
+            Update,
+            (character_movement, animate_sprite).run_if(in_state(AppState::InGame)),
+        );
     }
 }
 
@@ -42,14 +41,10 @@ fn setup_player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
-    mut grid_query: Query<&mut Grid>,
 ) {
-    let mut grid = grid_query.single_mut();
-    grid.place_object("player".to_string(), Vec2::new(0.0, 0.0));
-
     let texture_handle = asset_server.load("spritesheet.png");
     let texture_atlas =
-        TextureAtlas::from_grid(texture_handle, Vec2::new(100.0, 100.0), 4, 6, None, None);
+        TextureAtlas::from_grid(texture_handle, Vec2::new(100.0, 100.0), 4, 7, None, None);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
     // Use only the subset of sprites in the sheet that make up the run animation
     let animation_indices = AnimationIndices { first: 2, last: 2 };
