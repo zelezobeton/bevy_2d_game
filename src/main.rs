@@ -190,7 +190,7 @@ fn main() {
                 })
                 .build(),
             RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0),
-            RapierDebugRenderPlugin::default(),
+            // RapierDebugRenderPlugin::default(),
             player::PlayerPlugin,
             hud_ui::HudUiPlugin,
             menu_ui::MenuUiPlugin,
@@ -209,7 +209,7 @@ fn main() {
                 y_sort,
                 dig_flowerbed,
                 spread_seed,
-                grow_plants
+                grow_plants,
             )
                 .run_if(in_state(AppState::InGame)),
         )
@@ -227,8 +227,8 @@ fn setup(mut commands: Commands) {
             (InventoryObject::Axe, (false, 1)),
             (InventoryObject::Pickaxe, (false, 1)),
             (InventoryObject::Hoe, (false, 1)),
-            (InventoryObject::Wood, (false, 20)),
-            (InventoryObject::Rocks, (false, 20)),
+            (InventoryObject::Wood, (false, 0)),
+            (InventoryObject::Rocks, (false, 0)),
             (InventoryObject::Beans, (false, 0)),
             (InventoryObject::PotatoSeeds, (false, 0)),
         ]),
@@ -649,25 +649,24 @@ fn pickup_object(
     }
 }
 
-fn grow_plants(mut sprite_query: Query<(&mut Handle<Image>, &GrowStartTime, &WorldObject)>, asset_server: Res<AssetServer>,) {
+fn grow_plants(
+    mut sprite_query: Query<(&mut Handle<Image>, &GrowStartTime, &WorldObject)>,
+    asset_server: Res<AssetServer>,
+) {
     for (mut texture, grow_start_time, object) in sprite_query.iter_mut() {
         let time = grow_start_time.0.elapsed().as_secs();
         if time > 10 && time <= 20 {
             *texture = asset_server.load("sprout.png");
-        }
-        else if time > 20 && time <= 30 {
+        } else if time > 20 && time <= 30 {
             if *object == WorldObject::FlowerbedWithBeans {
                 *texture = asset_server.load("beans_level2.png");
-            }
-            else if *object == WorldObject::FlowerbedWithPotatoSeeds {
+            } else if *object == WorldObject::FlowerbedWithPotatoSeeds {
                 *texture = asset_server.load("potatoes_level2.png");
             }
-        }
-        else if time > 30 {
+        } else if time > 30 {
             if *object == WorldObject::FlowerbedWithBeans {
                 *texture = asset_server.load("beans_level3.png");
-            }
-            else if *object == WorldObject::FlowerbedWithPotatoSeeds {
+            } else if *object == WorldObject::FlowerbedWithPotatoSeeds {
                 *texture = asset_server.load("potatoes_level3.png");
             }
         }
@@ -676,7 +675,7 @@ fn grow_plants(mut sprite_query: Query<(&mut Handle<Image>, &GrowStartTime, &Wor
 
 fn spread_seed(
     input: Res<Input<KeyCode>>,
-    inv_query: Query<&Inventory>,
+    mut inv_query: Query<&mut Inventory>,
     mut grid_query: Query<&mut Grid>,
     player_query: Query<&Transform, With<Player>>,
     mut commands: Commands,
@@ -684,8 +683,8 @@ fn spread_seed(
     asset_server: Res<AssetServer>,
 ) {
     if input.just_pressed(KeyCode::Space)
-        && (inv_query.single().items[&InventoryObject::Beans].0
-            || inv_query.single().items[&InventoryObject::PotatoSeeds].0)
+        && inv_query.single().items[&InventoryObject::Beans].0
+        && inv_query.single().items[&InventoryObject::Beans].1 >= 1
     {
         let mut grid = grid_query.single_mut();
         let player_vec2 = player_query.single().translation.truncate();
@@ -703,15 +702,59 @@ fn spread_seed(
                         *texture = asset_server.load("flowerbed_with_seeds.png");
                         let now = Instant::now();
 
-                        if inv_query.single().items[&InventoryObject::Beans].0 {
-                            grid.place_object(entity, player_vec2, WorldObject::FlowerbedWithBeans);
-                            commands.entity(entity).insert((WorldObject::FlowerbedWithBeans, GrowStartTime(now)));
-                        }
+                        grid.place_object(entity, player_vec2, WorldObject::FlowerbedWithBeans);
+                        commands
+                            .entity(entity)
+                            .insert((WorldObject::FlowerbedWithBeans, GrowStartTime(now)));
 
-                        if inv_query.single().items[&InventoryObject::PotatoSeeds].0 {
-                            grid.place_object(entity, player_vec2, WorldObject::FlowerbedWithPotatoSeeds);
-                            commands.entity(entity).insert((WorldObject::FlowerbedWithPotatoSeeds, GrowStartTime(now)));
-                        }
+                        inv_query
+                            .single_mut()
+                            .items
+                            .entry(InventoryObject::Beans)
+                            .and_modify(|(_, count)| *count -= 1);
+                    }
+                }
+            }
+            None => {}
+        }
+
+
+    }
+
+    if input.just_pressed(KeyCode::Space)
+        && inv_query.single().items[&InventoryObject::PotatoSeeds].0
+        && inv_query.single().items[&InventoryObject::PotatoSeeds].1 >= 1
+    {
+        let mut grid = grid_query.single_mut();
+        let player_vec2 = player_query.single().translation.truncate();
+
+        let object = grid.get_object(player_vec2);
+        match object {
+            Some((entity, _, obj)) => {
+                // Remove flowerbed from grid
+                if obj == WorldObject::Flowerbed {
+                    grid.remove_object(player_vec2);
+                }
+
+                for (entity2, mut texture) in sprite_query.iter_mut() {
+                    if entity == entity2 {
+                        *texture = asset_server.load("flowerbed_with_seeds.png");
+                        let now = Instant::now();
+
+                        grid.place_object(
+                            entity,
+                            player_vec2,
+                            WorldObject::FlowerbedWithPotatoSeeds,
+                        );
+                        commands
+                            .entity(entity)
+                            .insert((WorldObject::FlowerbedWithPotatoSeeds, GrowStartTime(now)));
+
+                        inv_query
+                            .single_mut()
+                            .items
+                            .entry(InventoryObject::PotatoSeeds)
+                            .and_modify(|(_, count)| *count -= 1);
                     }
                 }
             }
