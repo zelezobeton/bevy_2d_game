@@ -16,8 +16,7 @@ DONE:
 - Let camera follow the player
 - Add colisions
 */
-use std::collections::HashMap;
-use std::time::Instant;
+use std::{collections::HashMap, time::Duration};
 
 use rand::Rng;
 
@@ -170,7 +169,7 @@ enum AppState {
 }
 
 #[derive(Component)]
-struct GrowStartTime(Instant);
+struct GrowStartTime(Duration);
 
 fn main() {
     App::new()
@@ -652,9 +651,10 @@ fn pickup_object(
 fn grow_plants(
     mut sprite_query: Query<(&mut Handle<Image>, &GrowStartTime, &WorldObject)>,
     asset_server: Res<AssetServer>,
+    time: Res<Time>,
 ) {
     for (mut texture, grow_start_time, object) in sprite_query.iter_mut() {
-        let time = grow_start_time.0.elapsed().as_secs();
+        let time = time.elapsed().as_secs() - grow_start_time.0.as_secs();
         if time > 10 && time <= 20 {
             *texture = asset_server.load("sprout.png");
         } else if time > 20 && time <= 30 {
@@ -681,6 +681,7 @@ fn spread_seed(
     mut commands: Commands,
     mut sprite_query: Query<(Entity, &mut Handle<Image>), With<WorldObject>>,
     asset_server: Res<AssetServer>,
+    time: Res<Time>,
 ) {
     if input.just_pressed(KeyCode::Space)
         && inv_query.single().items[&InventoryObject::Beans].0
@@ -700,7 +701,7 @@ fn spread_seed(
                 for (entity2, mut texture) in sprite_query.iter_mut() {
                     if entity == entity2 {
                         *texture = asset_server.load("flowerbed_with_seeds.png");
-                        let now = Instant::now();
+                        let now = time.elapsed();
 
                         grid.place_object(entity, player_vec2, WorldObject::FlowerbedWithBeans);
                         commands
@@ -739,7 +740,7 @@ fn spread_seed(
                 for (entity2, mut texture) in sprite_query.iter_mut() {
                     if entity == entity2 {
                         *texture = asset_server.load("flowerbed_with_seeds.png");
-                        let now = Instant::now();
+                        let now = time.elapsed();
 
                         grid.place_object(
                             entity,
