@@ -1,8 +1,10 @@
 /*
 TODO:
-- Grow plants
+- Make game played by group, rather than player
 
 DONE:
+- Make inventory dynamic, only show items which have instances
+- Grow plants
 - Make seed buttons clickable
 - Make store
 - Build houses wall by wall and walkable
@@ -605,12 +607,6 @@ fn drop_house_parts(
                     inv_query
                         .single_mut()
                         .items
-                        .entry(InventoryObject::Rocks)
-                        .and_modify(|(_, count)| *count -= 1);
-
-                    inv_query
-                        .single_mut()
-                        .items
                         .entry(InventoryObject::Wood)
                         .and_modify(|(_, count)| *count -= 1);
 
@@ -633,10 +629,11 @@ fn pickup_object(
         let shape_rot = 0.0;
         let shape_vel = Vec2::new(0.1, 0.1);
         let max_toi = 0.0;
+        let stop_at_penetration = true;
         let filter = QueryFilter::default();
 
         if let Some((_entity, _hit)) =
-            rapier_context.cast_shape(shape_pos, shape_rot, shape_vel, &shape, max_toi, filter)
+            rapier_context.cast_shape(shape_pos, shape_rot, shape_vel, &shape, max_toi, stop_at_penetration, filter)
         {
             inv_query
                 .single_mut()

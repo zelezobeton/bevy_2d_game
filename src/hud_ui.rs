@@ -7,6 +7,12 @@ use crate::{
 use bevy::prelude::*;
 
 #[derive(Component)]
+pub struct Hud;
+
+#[derive(Component)]
+pub struct InventoryUi;
+
+#[derive(Component)]
 pub struct WoodText;
 
 #[derive(Component)]
@@ -37,7 +43,10 @@ pub struct PotatoButton;
 pub struct StoreButton;
 
 #[derive(Component)]
-pub struct Hud;
+pub struct WoodUi;
+
+#[derive(Component)]
+pub struct RockUi;
 
 #[derive(Component, PartialEq, Eq, Hash, Debug, Clone)]
 pub enum House {
@@ -73,6 +82,10 @@ impl Plugin for HudUiPlugin {
                     interact_with_shop_button,
                     interact_with_house_buttons,
                     color_house_buttons,
+                    spawn_wood_ui,
+                    spawn_rock_ui,
+                    spawn_beans_ui,
+                    spawn_potato_ui,
                 )
                     .run_if(in_state(AppState::InGame)),
             )
@@ -522,6 +535,269 @@ fn color_house_buttons(
     }
 }
 
+fn spawn_wood_ui(
+    mut commands: Commands,
+    inventory_ui_query: Query<Entity, With<InventoryUi>>,
+    asset_server: Res<AssetServer>,
+    object_ui_query: Query<(Entity, &WoodUi)>,
+    inventory_query: Query<&Inventory>
+) {
+    
+    let mut spawned = false;
+    let mut entity: Option<Entity> = None;
+    for (entity2, _) in object_ui_query.iter() {
+        spawned = true;
+        entity = Some(entity2);
+    }
+    
+    if !spawned && inventory_query.single().items[&InventoryObject::Wood].1 > 0 {
+        let inventory_ui_entity = inventory_ui_query.single();
+        commands
+            .entity(inventory_ui_entity)
+            .with_children(|parent| {
+                parent
+                    .spawn(NodeBundle {
+                        style: Style {
+                            align_self: AlignSelf::FlexEnd,
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        ..default()
+                    })
+                    .insert(WoodUi)
+                    .with_children(|parent| {
+                        parent.spawn((
+                            NodeBundle {
+                                style: Style {
+                                    width: Val::Px(50.0),
+                                    height: Val::Px(50.0),
+                                    ..default()
+                                },
+                                background_color: Color::WHITE.into(),
+                                ..default()
+                            },
+                            UiImage::new(asset_server.load("wood.png")),
+                        ));
+                        parent.spawn((
+                            TextBundle::from_section(
+                                "0",
+                                TextStyle {
+                                    font_size: 30.0,
+                                    color: Color::DARK_GRAY,
+                                    ..default()
+                                },
+                            ),
+                            WoodText,
+                        ));
+                    });
+            });
+    }
+
+    if spawned && inventory_query.single().items[&InventoryObject::Wood].1 == 0 {
+        commands.entity(entity.unwrap()).despawn_recursive();
+    }
+}
+
+fn spawn_rock_ui(
+    mut commands: Commands,
+    inventory_ui_query: Query<Entity, With<InventoryUi>>,
+    asset_server: Res<AssetServer>,
+    object_ui_query: Query<(Entity, &RockUi)>,
+    inventory_query: Query<&Inventory>
+) {
+    
+    let mut spawned = false;
+    let mut entity: Option<Entity> = None;
+    for (entity2, _) in object_ui_query.iter() {
+        spawned = true;
+        entity = Some(entity2);
+    }
+    
+    if !spawned && inventory_query.single().items[&InventoryObject::Rocks].1 > 0 {
+        let inventory_ui_entity = inventory_ui_query.single();
+        commands
+            .entity(inventory_ui_entity)
+            .with_children(|parent| {
+                parent
+                    .spawn(NodeBundle {
+                        style: Style {
+                            align_self: AlignSelf::FlexEnd,
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        ..default()
+                    })
+                    .insert(RockUi)
+                    .with_children(|parent| {
+                        parent.spawn((
+                            NodeBundle {
+                                style: Style {
+                                    width: Val::Px(50.0),
+                                    height: Val::Px(50.0),
+                                    ..default()
+                                },
+                                background_color: Color::WHITE.into(),
+                                ..default()
+                            },
+                            UiImage::new(asset_server.load("rocks.png")),
+                        ));
+                        parent.spawn((
+                            TextBundle::from_section(
+                                "0",
+                                TextStyle {
+                                    font_size: 30.0,
+                                    color: Color::DARK_GRAY,
+                                    ..default()
+                                },
+                            ),
+                            RocksText,
+                        ));
+                    });
+            });
+            
+    }
+
+    if spawned && inventory_query.single().items[&InventoryObject::Rocks].1 == 0 {
+        commands.entity(entity.unwrap()).despawn_recursive();
+    }
+}
+
+fn spawn_beans_ui(
+    mut commands: Commands,
+    inventory_ui_query: Query<Entity, With<InventoryUi>>,
+    asset_server: Res<AssetServer>,
+    object_ui_query: Query<(Entity, &BeansButton)>,
+    inventory_query: Query<&Inventory>
+) {
+    
+    let mut spawned = false;
+    let mut entity: Option<Entity> = None;
+    for (entity2, _) in object_ui_query.iter() {
+        spawned = true;
+        entity = Some(entity2);
+    }
+    
+    if !spawned && inventory_query.single().items[&InventoryObject::Beans].1 > 0 {
+        let inventory_ui_entity = inventory_ui_query.single();
+        commands
+            .entity(inventory_ui_entity)
+            .with_children(|parent| {
+                parent
+                    .spawn((
+                        ButtonBundle {
+                            style: Style {
+                                align_self: AlignSelf::FlexEnd,
+                                flex_direction: FlexDirection::Column,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::BLACK.into(),
+                            ..default()
+                        },
+                        BeansButton,
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn((
+                            NodeBundle {
+                                style: Style {
+                                    width: Val::Px(50.0),
+                                    height: Val::Px(50.0),
+                                    ..default()
+                                },
+                                background_color: Color::WHITE.into(),
+                                ..default()
+                            },
+                            UiImage::new(asset_server.load("beans.png")),
+                        ));
+                        parent.spawn((
+                            TextBundle::from_section(
+                                "0",
+                                TextStyle {
+                                    font_size: 30.0,
+                                    color: Color::DARK_GRAY,
+                                    ..default()
+                                },
+                            ),
+                            BeansText,
+                        ));
+                    });
+            });            
+    }
+
+    if spawned && inventory_query.single().items[&InventoryObject::Beans].1 == 0 {
+        commands.entity(entity.unwrap()).despawn_recursive();
+    }
+}
+
+fn spawn_potato_ui(
+    mut commands: Commands,
+    inventory_ui_query: Query<Entity, With<InventoryUi>>,
+    asset_server: Res<AssetServer>,
+    object_ui_query: Query<(Entity, &PotatoButton)>,
+    inventory_query: Query<&Inventory>
+) {
+    
+    let mut spawned = false;
+    let mut entity: Option<Entity> = None;
+    for (entity2, _) in object_ui_query.iter() {
+        spawned = true;
+        entity = Some(entity2);
+    }
+    
+    if !spawned && inventory_query.single().items[&InventoryObject::PotatoSeeds].1 > 0 {
+        let inventory_ui_entity = inventory_ui_query.single();
+        commands
+            .entity(inventory_ui_entity)
+            .with_children(|parent| {
+                parent
+                    .spawn((
+                        ButtonBundle {
+                            style: Style {
+                                align_self: AlignSelf::FlexEnd,
+                                flex_direction: FlexDirection::Column,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            background_color: Color::BLACK.into(),
+                            ..default()
+                        },
+                        PotatoButton,
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn((
+                            NodeBundle {
+                                style: Style {
+                                    width: Val::Px(50.0),
+                                    height: Val::Px(50.0),
+                                    ..default()
+                                },
+                                background_color: Color::WHITE.into(),
+                                ..default()
+                            },
+                            UiImage::new(asset_server.load("potato_seeds.png")),
+                        ));
+                        parent.spawn((
+                            TextBundle::from_section(
+                                "0",
+                                TextStyle {
+                                    font_size: 30.0,
+                                    color: Color::DARK_GRAY,
+                                    ..default()
+                                },
+                            ),
+                            PotatoText,
+                        ));
+                    });
+            });
+    }
+
+    if spawned && inventory_query.single().items[&InventoryObject::PotatoSeeds].1 == 0 {
+        commands.entity(entity.unwrap()).despawn_recursive();
+    }
+}
+
 fn despawn_hud_ui(mut commands: Commands, query: Query<Entity, With<Hud>>) {
     commands.entity(query.single()).despawn_recursive();
 }
@@ -566,6 +842,7 @@ fn spawn_hud_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     },
                     ..default()
                 })
+                .insert(InventoryUi)
                 // Axe
                 .with_children(|parent| {
                     parent
@@ -639,198 +916,6 @@ fn spawn_hud_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                                 UiImage::new(asset_server.load("hoe.png")),
                             ));
-                        });
-                })
-                // Wood
-                .with_children(|parent| {
-                    parent
-                        .spawn(NodeBundle {
-                            style: Style {
-                                align_self: AlignSelf::FlexEnd,
-                                flex_direction: FlexDirection::Column,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                            ..default()
-                        })
-                        .with_children(|parent| {
-                            parent.spawn((
-                                NodeBundle {
-                                    style: Style {
-                                        width: Val::Px(50.0),
-                                        height: Val::Px(50.0),
-                                        ..default()
-                                    },
-                                    background_color: Color::WHITE.into(),
-                                    ..default()
-                                },
-                                UiImage::new(asset_server.load("wood.png")),
-                            ));
-                            parent.spawn((
-                                TextBundle::from_section(
-                                    "0",
-                                    TextStyle {
-                                        font_size: 30.0,
-                                        color: Color::DARK_GRAY,
-                                        ..default()
-                                    },
-                                ),
-                                WoodText,
-                            ));
-                        });
-                })
-                // Rocks
-                .with_children(|parent| {
-                    parent
-                        .spawn(NodeBundle {
-                            style: Style {
-                                align_self: AlignSelf::FlexEnd,
-                                flex_direction: FlexDirection::Column,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                            ..default()
-                        })
-                        .with_children(|parent| {
-                            parent.spawn((
-                                NodeBundle {
-                                    style: Style {
-                                        width: Val::Px(50.0),
-                                        height: Val::Px(50.0),
-                                        ..default()
-                                    },
-                                    background_color: Color::WHITE.into(),
-                                    ..default()
-                                },
-                                UiImage::new(asset_server.load("rocks.png")),
-                            ));
-                            parent.spawn((
-                                TextBundle::from_section(
-                                    "0",
-                                    TextStyle {
-                                        font_size: 30.0,
-                                        color: Color::DARK_GRAY,
-                                        ..default()
-                                    },
-                                ),
-                                RocksText,
-                            ));
-                        });
-                })
-                // Beans
-                .with_children(|parent| {
-                    parent
-                        .spawn((
-                            ButtonBundle {
-                                style: Style {
-                                    align_self: AlignSelf::FlexEnd,
-                                    flex_direction: FlexDirection::Column,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::BLACK.into(),
-                                ..default()
-                            },
-                            BeansButton,
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn((
-                                NodeBundle {
-                                    style: Style {
-                                        width: Val::Px(50.0),
-                                        height: Val::Px(50.0),
-                                        ..default()
-                                    },
-                                    background_color: Color::WHITE.into(),
-                                    ..default()
-                                },
-                                UiImage::new(asset_server.load("beans.png")),
-                            ));
-                            parent.spawn((
-                                TextBundle::from_section(
-                                    "0",
-                                    TextStyle {
-                                        font_size: 30.0,
-                                        color: Color::DARK_GRAY,
-                                        ..default()
-                                    },
-                                ),
-                                BeansText,
-                            ));
-                        });
-                })
-                // Potato seeds
-                .with_children(|parent| {
-                    parent
-                        .spawn((
-                            ButtonBundle {
-                                style: Style {
-                                    align_self: AlignSelf::FlexEnd,
-                                    flex_direction: FlexDirection::Column,
-                                    align_items: AlignItems::Center,
-                                    ..default()
-                                },
-                                background_color: Color::BLACK.into(),
-                                ..default()
-                            },
-                            PotatoButton,
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn((
-                                NodeBundle {
-                                    style: Style {
-                                        width: Val::Px(50.0),
-                                        height: Val::Px(50.0),
-                                        ..default()
-                                    },
-                                    background_color: Color::WHITE.into(),
-                                    ..default()
-                                },
-                                UiImage::new(asset_server.load("potato_seeds.png")),
-                            ));
-                            parent.spawn((
-                                TextBundle::from_section(
-                                    "0",
-                                    TextStyle {
-                                        font_size: 30.0,
-                                        color: Color::DARK_GRAY,
-                                        ..default()
-                                    },
-                                ),
-                                PotatoText,
-                            ));
-                        });
-                })
-                // Store button
-                .with_children(|parent| {
-                    parent
-                        .spawn(NodeBundle {
-                            style: Style {
-                                left: Val::Px(20.0),
-                                ..default()
-                            },
-                            background_color: Color::WHITE.into(),
-                            ..default()
-                        })
-                        .with_children(|parent| {
-                            parent
-                                .spawn((
-                                    ButtonBundle {
-                                        background_color: Color::BLACK.into(),
-                                        ..default()
-                                    },
-                                    StoreButton,
-                                ))
-                                .with_children(|parent| {
-                                    parent.spawn(TextBundle::from_section(
-                                        "Store",
-                                        TextStyle {
-                                            font_size: 30.0,
-                                            color: Color::WHITE,
-                                            ..default()
-                                        },
-                                    ));
-                                });
                         });
                 });
         })
@@ -1048,6 +1133,40 @@ fn spawn_hud_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 image: UiImage::new(asset_server.load("door_icon.png")),
                                 ..default()
                             });
+                        });
+                })
+                // Store button
+                .with_children(|parent| {
+                    parent
+                        .spawn(NodeBundle {
+                            style: Style {
+                                align_items: AlignItems::End,
+                                justify_items: JustifyItems::End,
+                                top: Val::Px(10.0),
+                                ..default()
+                            },
+                            // background_color: Color::WHITE.into(),
+                            ..default()
+                        })
+                        .with_children(|parent| {
+                            parent
+                                .spawn((
+                                    ButtonBundle {
+                                        background_color: Color::BLACK.into(),
+                                        ..default()
+                                    },
+                                    StoreButton,
+                                ))
+                                .with_children(|parent| {
+                                    parent.spawn(TextBundle::from_section(
+                                        "Store",
+                                        TextStyle {
+                                            font_size: 30.0,
+                                            color: Color::WHITE,
+                                            ..default()
+                                        },
+                                    ));
+                                });
                         });
                 });
         });
