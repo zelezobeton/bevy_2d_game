@@ -1,8 +1,9 @@
 /*
 TODO:
-- Make game played by group, rather than player
+- Make game played by group, rather than one player
 
 DONE:
+- Make cursor selectable area
 - Make inventory dynamic, only show items which have instances
 - Grow plants
 - Make seed buttons clickable
@@ -20,22 +21,38 @@ DONE:
 */
 use std::{collections::HashMap, time::Duration};
 
-use rand::Rng;
-
 use bevy::{prelude::*, window::PrimaryWindow};
+use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
+use rand::Rng;
 
 mod hud_ui;
 mod menu_ui;
 mod player;
 mod store_ui;
-use hud_ui::{House, OnCursor};
+use hud_ui::{House, Hud, OnCursor};
 use player::{AnimationIndices, Movement, Player};
+
+const TILE: f32 = 50.0;
+const TILE_HALF: f32 = 25.0;
+
+struct Placement {
+    entity: Entity,
+    grid_pos: (i32, i32),
+    object: WorldObject,
+}
+
+#[derive(PartialEq)]
+struct Selection {
+    entity: Entity,
+    pos: (Vec2, Vec2),
+}
 
 #[derive(Component)]
 pub struct Grid {
     tile_size: f32,
-    placements: Vec<(Entity, (i32, i32), WorldObject)>,
+    placements: Vec<Placement>,
+    selection: Option<Selection>,
 }
 
 impl Grid {
@@ -43,13 +60,14 @@ impl Grid {
         Self {
             tile_size,
             placements: vec![],
+            selection: None,
         }
     }
 
     fn remove_object(&mut self, pos: Vec2) {
         let mut index: Option<usize> = None;
-        for (index2, (_, pos2, _)) in self.placements.iter().enumerate() {
-            if self.world_to_grid(pos) == *pos2 {
+        for (index2, placement) in self.placements.iter().enumerate() {
+            if self.world_to_grid(pos) == placement.grid_pos {
                 index = Some(index2);
             }
         }
@@ -61,25 +79,41 @@ impl Grid {
         }
     }
 
-    fn get_object(&self, pos: Vec2) -> Option<(Entity, (i32, i32), WorldObject)> {
-        for (entity, pos2, object) in self.placements.iter() {
-            if self.world_to_grid(pos) == *pos2 {
-                return Some((*entity, *pos2, *object));
+    fn get_object(&self, pos: Vec2) -> Option<Placement> {
+        for Placement {
+            entity,
+            grid_pos,
+            object,
+        } in self.placements.iter()
+        {
+            if self.world_to_grid(pos) == *grid_pos {
+                return Some(Placement {
+                    entity: *entity,
+                    grid_pos: *grid_pos,
+                    object: *object,
+                });
             }
         }
         return None;
     }
 
     fn place_object(&mut self, entity: Entity, pos: Vec2, object: WorldObject) {
-        self.placements
-            .push((entity, self.world_to_grid(pos), object));
+        self.placements.push(Placement {
+            entity,
+            grid_pos: self.world_to_grid(pos),
+            object,
+        });
     }
 
     fn is_free(&self, pos: Vec2) -> bool {
         let mut result = true;
-        for placement in self.placements.iter() {
-            let (_, tuple, _) = placement;
-            if *tuple == self.world_to_grid(pos) {
+        for Placement {
+            entity: _,
+            grid_pos,
+            object: _,
+        } in self.placements.iter()
+        {
+            if *grid_pos == self.world_to_grid(pos) {
                 result = false;
                 break;
             }
@@ -123,6 +157,15 @@ impl Inventory {
             }
         }
         return satisfied;
+    }
+
+    fn using_object(&self) -> bool {
+        for (_, (using, _)) in self.items.iter() {
+            if *using {
+                return true;
+            }
+        }
+        return false;
     }
 }
 
@@ -173,6 +216,9 @@ enum AppState {
 #[derive(Component)]
 struct GrowStartTime(Duration);
 
+#[derive(Event)]
+pub struct ButtonPressed;
+
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.0, 0.5, 0.0)))
@@ -196,6 +242,7 @@ fn main() {
             hud_ui::HudUiPlugin,
             menu_ui::MenuUiPlugin,
             store_ui::StoreUiPlugin,
+            ShapePlugin,
         ))
         .add_systems(Startup, setup)
         .add_systems(PostStartup, (spawn_trees, spawn_rocks, spawn_grass))
@@ -211,6 +258,7 @@ fn main() {
                 dig_flowerbed,
                 spread_seed,
                 grow_plants,
+                select_area,
             )
                 .run_if(in_state(AppState::InGame)),
         )
@@ -220,7 +268,7 @@ fn main() {
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default()).insert(MainCamera);
 
-    commands.spawn(Grid::new(50.0));
+    commands.spawn(Grid::new(TILE));
 
     commands.spawn(Inventory {
         coins: 100,
@@ -294,6 +342,123 @@ fn y_sort(mut query: Query<(&mut Transform, &YSort)>) {
     for (mut transform, ysort) in query.iter_mut() {
         // Might need to keep an eye on this, it can't grow smaller than -1000
         transform.translation.z = 0.001 * (-transform.translation.y + (ysort.0 / 2.0));
+    }
+}
+
+fn select_area(
+    mouse: Res<Input<MouseButton>>,
+    cursor_transform: Query<&Transform, With<Cursor>>,
+    mut grid_query: Query<&mut Grid>,
+    mut commands: Commands,
+    inv_query: Query<&Inventory>,
+    mut interaction_query: Query<&Interaction, (Changed<Interaction>, With<Hud>)>,
+) {
+    let mut hud_button_pressed = false;
+    for interaction in &mut interaction_query {
+        match *interaction {
+            Interaction::Pressed => {
+                hud_button_pressed = true;
+            }
+            _ => {}
+        }
+    }
+
+    if mouse.pressed(MouseButton::Left) && inv_query.single().using_object()
+    {
+        if grid_query.single().selection == None && hud_button_pressed{
+            let cursor_position = cursor_transform.single().translation.truncate();
+
+            let shape = shapes::Polygon {
+                points: vec![
+                    cursor_position + Vec2::new(TILE_HALF, TILE_HALF),
+                    cursor_position + Vec2::new(TILE_HALF, -TILE_HALF),
+                    cursor_position + Vec2::new(-TILE_HALF, -TILE_HALF),
+                    cursor_position + Vec2::new(-TILE_HALF, TILE_HALF),
+                ],
+                closed: true,
+            };
+
+            let entity = commands
+                .spawn((
+                    ShapeBundle {
+                        path: GeometryBuilder::build_as(&shape),
+                        ..default()
+                    },
+                    Stroke::new(Color::BLACK.into(), 2.0),
+                ))
+                .id();
+
+            grid_query.single_mut().selection = Some(Selection {
+                entity,
+                pos: (cursor_position, cursor_position),
+            });
+        } else if grid_query.single().selection != None {
+            let cursor_position = cursor_transform.single().translation.truncate();
+            let sub_position = grid_query.single().selection.as_ref().unwrap().pos.0
+                - cursor_transform.single().translation.truncate();
+            let mut corner = grid_query.single().selection.as_ref().unwrap().pos.0;
+            let mut corner2 = cursor_transform.single().translation.truncate();
+            if sub_position.x == 0.0 && sub_position.y == 0.0 {
+                corner += Vec2::new(TILE_HALF, TILE_HALF);
+                corner2 += Vec2::new(-TILE_HALF, -TILE_HALF);
+            } else if sub_position.x < 0.0 {
+                if sub_position.y < 0.0 {
+                    corner += Vec2::new(-TILE_HALF, -TILE_HALF);
+                    corner2 += Vec2::new(TILE_HALF, TILE_HALF);
+                } else {
+                    corner += Vec2::new(-TILE_HALF, TILE_HALF);
+                    corner2 += Vec2::new(TILE_HALF, -TILE_HALF);
+                }
+            } else if sub_position.x > 0.0 {
+                if sub_position.y < 0.0 {
+                    corner += Vec2::new(TILE_HALF, -TILE_HALF);
+                    corner2 += Vec2::new(-TILE_HALF, TILE_HALF);
+                } else {
+                    corner += Vec2::new(TILE_HALF, TILE_HALF);
+                    corner2 += Vec2::new(-TILE_HALF, -TILE_HALF);
+                }
+            } else {
+                if sub_position.y < 0.0 {
+                    corner += Vec2::new(-TILE_HALF, -TILE_HALF);
+                    corner2 += Vec2::new(TILE_HALF, TILE_HALF);
+                } else {
+                    corner += Vec2::new(TILE_HALF, TILE_HALF);
+                    corner2 += Vec2::new(-TILE_HALF, -TILE_HALF);
+                }
+            }
+
+            let shape = shapes::Polygon {
+                points: vec![
+                    corner,
+                    Vec2::new(corner.x, corner2.y),
+                    corner2,
+                    Vec2::new(corner2.x, corner.y),
+                ],
+                closed: true,
+            };
+
+            let entity = commands
+                .spawn((
+                    ShapeBundle {
+                        path: GeometryBuilder::build_as(&shape),
+                        ..default()
+                    },
+                    Stroke::new(Color::BLACK.into(), 2.0),
+                ))
+                .id();
+
+            commands
+                .entity(grid_query.single().selection.as_ref().unwrap().entity)
+                .despawn();
+
+            grid_query.single_mut().selection = Some(Selection {
+                entity,
+                pos: (
+                    grid_query.single().selection.as_ref().unwrap().pos.0,
+                    cursor_position,
+                ),
+            });
+        }
     }
 }
 
@@ -632,9 +797,15 @@ fn pickup_object(
         let stop_at_penetration = true;
         let filter = QueryFilter::default();
 
-        if let Some((_entity, _hit)) =
-            rapier_context.cast_shape(shape_pos, shape_rot, shape_vel, &shape, max_toi, stop_at_penetration, filter)
-        {
+        if let Some((_entity, _hit)) = rapier_context.cast_shape(
+            shape_pos,
+            shape_rot,
+            shape_vel,
+            &shape,
+            max_toi,
+            stop_at_penetration,
+            filter,
+        ) {
             inv_query
                 .single_mut()
                 .items
@@ -687,11 +858,15 @@ fn spread_seed(
         let mut grid = grid_query.single_mut();
         let player_vec2 = player_query.single().translation.truncate();
 
-        let object = grid.get_object(player_vec2);
-        match object {
-            Some((entity, _, obj)) => {
+        let obj = grid.get_object(player_vec2);
+        match obj {
+            Some(Placement {
+                entity,
+                grid_pos: _,
+                object,
+            }) => {
                 // Remove flowerbed from grid
-                if obj == WorldObject::Flowerbed {
+                if object == WorldObject::Flowerbed {
                     grid.remove_object(player_vec2);
                 }
 
@@ -715,8 +890,6 @@ fn spread_seed(
             }
             None => {}
         }
-
-
     }
 
     if input.just_pressed(KeyCode::Space)
@@ -726,11 +899,15 @@ fn spread_seed(
         let mut grid = grid_query.single_mut();
         let player_vec2 = player_query.single().translation.truncate();
 
-        let object = grid.get_object(player_vec2);
-        match object {
-            Some((entity, _, obj)) => {
+        let obj = grid.get_object(player_vec2);
+        match obj {
+            Some(Placement {
+                entity,
+                grid_pos: _,
+                object,
+            }) => {
                 // Remove flowerbed from grid
-                if obj == WorldObject::Flowerbed {
+                if object == WorldObject::Flowerbed {
                     grid.remove_object(player_vec2);
                 }
 
@@ -804,10 +981,14 @@ fn dig_flowerbed(
         let player_vec2 = player_query.single().translation.truncate();
 
         // Remove grass
-        let object = grid.get_object(player_vec2);
-        match object {
-            Some((entity, _, obj)) => {
-                if obj == WorldObject::Grass {
+        let obj = grid.get_object(player_vec2);
+        match obj {
+            Some(Placement {
+                entity,
+                grid_pos: _,
+                object,
+            }) => {
+                if object == WorldObject::Grass {
                     commands.entity(entity).despawn();
                     grid.remove_object(player_vec2);
                     return;

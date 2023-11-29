@@ -540,16 +540,15 @@ fn spawn_wood_ui(
     inventory_ui_query: Query<Entity, With<InventoryUi>>,
     asset_server: Res<AssetServer>,
     object_ui_query: Query<(Entity, &WoodUi)>,
-    inventory_query: Query<&Inventory>
+    inventory_query: Query<&Inventory>,
 ) {
-    
     let mut spawned = false;
     let mut entity: Option<Entity> = None;
     for (entity2, _) in object_ui_query.iter() {
         spawned = true;
         entity = Some(entity2);
     }
-    
+
     if !spawned && inventory_query.single().items[&InventoryObject::Wood].1 > 0 {
         let inventory_ui_entity = inventory_ui_query.single();
         commands
@@ -604,16 +603,15 @@ fn spawn_rock_ui(
     inventory_ui_query: Query<Entity, With<InventoryUi>>,
     asset_server: Res<AssetServer>,
     object_ui_query: Query<(Entity, &RockUi)>,
-    inventory_query: Query<&Inventory>
+    inventory_query: Query<&Inventory>,
 ) {
-    
     let mut spawned = false;
     let mut entity: Option<Entity> = None;
     for (entity2, _) in object_ui_query.iter() {
         spawned = true;
         entity = Some(entity2);
     }
-    
+
     if !spawned && inventory_query.single().items[&InventoryObject::Rocks].1 > 0 {
         let inventory_ui_entity = inventory_ui_query.single();
         commands
@@ -656,7 +654,6 @@ fn spawn_rock_ui(
                         ));
                     });
             });
-            
     }
 
     if spawned && inventory_query.single().items[&InventoryObject::Rocks].1 == 0 {
@@ -669,16 +666,15 @@ fn spawn_beans_ui(
     inventory_ui_query: Query<Entity, With<InventoryUi>>,
     asset_server: Res<AssetServer>,
     object_ui_query: Query<(Entity, &BeansButton)>,
-    inventory_query: Query<&Inventory>
+    inventory_query: Query<&Inventory>,
 ) {
-    
     let mut spawned = false;
     let mut entity: Option<Entity> = None;
     for (entity2, _) in object_ui_query.iter() {
         spawned = true;
         entity = Some(entity2);
     }
-    
+
     if !spawned && inventory_query.single().items[&InventoryObject::Beans].1 > 0 {
         let inventory_ui_entity = inventory_ui_query.single();
         commands
@@ -723,7 +719,7 @@ fn spawn_beans_ui(
                             BeansText,
                         ));
                     });
-            });            
+            });
     }
 
     if spawned && inventory_query.single().items[&InventoryObject::Beans].1 == 0 {
@@ -736,16 +732,15 @@ fn spawn_potato_ui(
     inventory_ui_query: Query<Entity, With<InventoryUi>>,
     asset_server: Res<AssetServer>,
     object_ui_query: Query<(Entity, &PotatoButton)>,
-    inventory_query: Query<&Inventory>
+    inventory_query: Query<&Inventory>,
 ) {
-    
     let mut spawned = false;
     let mut entity: Option<Entity> = None;
     for (entity2, _) in object_ui_query.iter() {
         spawned = true;
         entity = Some(entity2);
     }
-    
+
     if !spawned && inventory_query.single().items[&InventoryObject::PotatoSeeds].1 > 0 {
         let inventory_ui_entity = inventory_ui_query.single();
         commands
@@ -804,13 +799,14 @@ fn despawn_hud_ui(mut commands: Commands, query: Query<Entity, With<Hud>>) {
 
 fn spawn_hud_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
-        .spawn(NodeBundle {
+        .spawn(ButtonBundle {
             style: Style {
                 display: Display::Flex,
                 height: Val::Percent(100.0),
                 width: Val::Percent(100.0),
                 ..default()
             },
+            background_color: BackgroundColor(Color::with_a(Color::BLACK, 0.0)),
             ..default()
         })
         .insert(Hud)
