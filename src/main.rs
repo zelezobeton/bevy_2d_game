@@ -19,11 +19,12 @@ DONE:
 - Let camera follow the player
 - Add colisions
 */
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, collections::VecDeque, time::Duration};
 
 use bevy::{prelude::*, window::PrimaryWindow};
 use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
+use pathfinding::prelude::astar;
 use rand::Rng;
 
 mod hud_ui;
@@ -36,6 +37,7 @@ use player::{AnimationIndices, Movement, Player};
 const TILE: f32 = 50.0;
 const TILE_HALF: f32 = 25.0;
 
+#[derive(Clone, Copy, PartialEq)]
 struct Placement {
     entity: Entity,
     grid_pos: (i32, i32),
@@ -62,6 +64,49 @@ impl Grid {
             placements: vec![],
             selection: None,
         }
+    }
+
+    fn get_objects_in_selection(&self) -> Vec<Placement> {
+        let mut placements = vec![];
+        if self.selection != None {
+            let mut sel_corner1: Option<(i32, i32)> = None;
+            let mut sel_corner2: Option<(i32, i32)> = None;
+            let corners = vec![
+                self.world_to_grid(self.selection.as_ref().unwrap().pos.0),
+                self.world_to_grid(self.selection.as_ref().unwrap().pos.1),
+                (
+                    self.world_to_grid(self.selection.as_ref().unwrap().pos.0).0,
+                    self.world_to_grid(self.selection.as_ref().unwrap().pos.1).1,
+                ),
+                (
+                    self.world_to_grid(self.selection.as_ref().unwrap().pos.1).0,
+                    self.world_to_grid(self.selection.as_ref().unwrap().pos.0).1,
+                ),
+            ];
+            for corner in corners.iter() {
+                if sel_corner1 == None && sel_corner2 == None {
+                    sel_corner1 = Some(*corner);
+                    sel_corner2 = Some(*corner);
+                } else {
+                    if corner.0 <= sel_corner1.unwrap().0 && corner.1 <= sel_corner1.unwrap().1 {
+                        sel_corner1 = Some(*corner)
+                    }
+                    if corner.0 >= sel_corner2.unwrap().0 && corner.1 >= sel_corner2.unwrap().1 {
+                        sel_corner2 = Some(*corner)
+                    }
+                }
+            }
+            for placement in self.placements.iter() {
+                if placement.grid_pos.0 >= sel_corner1.unwrap().0
+                    && placement.grid_pos.1 >= sel_corner1.unwrap().1
+                    && placement.grid_pos.0 <= sel_corner2.unwrap().0
+                    && placement.grid_pos.1 <= sel_corner2.unwrap().1
+                {
+                    placements.push(*placement)
+                }
+            }
+        }
+        return placements;
     }
 
     fn remove_object(&mut self, pos: Vec2) {
@@ -169,6 +214,59 @@ impl Inventory {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct Pos(i32, i32);
+
+impl Pos {
+    fn distance(&self, other: &Pos) -> u32 {
+        (self.0.abs_diff(other.0) + self.1.abs_diff(other.1)) as u32
+    }
+
+    fn successors(&self, grid: &Grid, goal: Pos) -> Vec<(Pos, u32)> {
+        let &Pos(x, y) = self;
+        let mut pos_vec: Vec<Pos> = vec![];
+        let pos_vec2: Vec<(i32, i32)> = vec![(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)];
+        for pos in pos_vec2.iter() {
+            if Pos(pos.0, pos.1) == goal {
+                pos_vec.push(Pos(pos.0, pos.1));
+                continue
+            }
+            let pos2 = grid.get_object(grid.grid_to_world((pos.0, pos.1)));
+            if pos2 == None {
+                pos_vec.push(Pos(pos.0, pos.1))
+            } else {
+                if !(pos2.unwrap().object == WorldObject::Tree) && !(pos2.unwrap().object == WorldObject::Rock) {
+                    pos_vec.push(Pos(pos.0, pos.1))
+                }
+            }
+        }
+
+        pos_vec
+            .into_iter()
+            .map(|p| (p, 1))
+            .collect()
+    }
+}
+
+struct TaskObject {
+    pos: Vec<(i32, i32)>,
+}
+
+#[derive(PartialEq)]
+enum TaskType {
+    CutTree,
+}
+
+struct Task {
+    task_type: TaskType,
+    task_object: TaskObject,
+}
+
+#[derive(Component)]
+struct Schedule {
+    tasks: VecDeque<Task>,
+}
+
 #[derive(Component)]
 struct MainCamera;
 
@@ -259,6 +357,8 @@ fn main() {
                 spread_seed,
                 grow_plants,
                 select_area,
+                select_trees,
+                do_task
             )
                 .run_if(in_state(AppState::InGame)),
         )
@@ -269,6 +369,10 @@ fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default()).insert(MainCamera);
 
     commands.spawn(Grid::new(TILE));
+
+    commands.spawn(Schedule {
+        tasks: VecDeque::new(),
+    });
 
     commands.spawn(Inventory {
         coins: 100,
@@ -345,6 +449,56 @@ fn y_sort(mut query: Query<(&mut Transform, &YSort)>) {
     }
 }
 
+fn do_task(mut schedule_query: Query<&mut Schedule>, mut player_query: Query<&mut Transform, With<Player>>, grid_query: Query<&Grid>,) {
+    let task_option = schedule_query.single_mut().tasks.pop_front();
+    match task_option {
+        Some(task) => {
+            let goal: Pos = Pos(task.task_object.pos[0].0, task.task_object.pos[0].1);
+            let (x, y) = grid_query.single().world_to_grid(player_query.single().translation.truncate());
+            let result = astar(
+                &Pos(x, y),
+                |p| p.successors(grid_query.single(), goal),
+                |p| p.distance(&goal) / 3,
+                |p| *p == goal,
+            );
+            // println!("{:?}", result);
+            for pos in result.unwrap().0.iter() {
+                player_query.single_mut().translation = grid_query.single().grid_to_world((pos.0, pos.1)).extend(0.0);
+            }
+        }
+        None => {}
+    }
+}
+
+fn select_trees(
+    inv_query: Query<&Inventory>,
+    mut grid_query: Query<&mut Grid>,
+    mut schedule_query: Query<&mut Schedule>,
+    input: Res<Input<KeyCode>>,
+    mut commands: Commands,
+) {
+    if input.just_pressed(KeyCode::Space)
+        && inv_query.single().items[&InventoryObject::Axe].0
+        && grid_query.single().selection != None
+    {
+        for placement in grid_query.single().get_objects_in_selection() {
+            if placement.object == WorldObject::Tree {
+                // println!("{:?}", placement.grid_pos);
+                schedule_query.single_mut().tasks.push_back(Task {
+                    task_type: TaskType::CutTree,
+                    task_object: TaskObject {
+                        pos: vec![placement.grid_pos],
+                    },
+                })
+            }
+        }
+        commands
+            .entity(grid_query.single_mut().selection.as_ref().unwrap().entity)
+            .despawn();
+        grid_query.single_mut().selection = None;
+    }
+}
+
 fn select_area(
     mouse: Res<Input<MouseButton>>,
     cursor_transform: Query<&Transform, With<Cursor>>,
@@ -363,9 +517,8 @@ fn select_area(
         }
     }
 
-    if mouse.pressed(MouseButton::Left) && inv_query.single().using_object()
-    {
-        if grid_query.single().selection == None && hud_button_pressed{
+    if mouse.pressed(MouseButton::Left) && inv_query.single().using_object() {
+        if grid_query.single().selection == None && hud_button_pressed {
             let cursor_position = cursor_transform.single().translation.truncate();
 
             let shape = shapes::Polygon {

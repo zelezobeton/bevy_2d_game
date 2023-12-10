@@ -58,7 +58,7 @@ fn setup_player(
         animation_indices,
         AnimationTimer(Timer::from_seconds(0.3, TimerMode::Repeating)),
         KinematicCharacterController::default(),
-        RigidBody::KinematicVelocityBased,
+        RigidBody::KinematicPositionBased,
         Collider::convex_hull(&[
             Vect::new(-10.0, -50.0),
             Vect::new(10.0, -50.0),
